@@ -1,0 +1,26 @@
+; DeskFeel — 拟物数字桌板（Godot 版）
+; 引擎：Godot 4.6.3，语言 GDScript。
+; 渲染：gl_compatibility（OpenGL/WebGL2）—— Web + iOS 都稳。
+
+config_version=5
+
+[application]
+
+config/name="DeskFeel"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.6", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[display]
+
+window/size/viewport_width=1170
+window/size/viewport_height=2532
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=1
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
