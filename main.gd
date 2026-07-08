@@ -14,8 +14,12 @@ const TOKEN_RADIUS := 0.22
 const TOKEN_HEIGHT := 0.014                 # 纸板厚度
 const BUTTON_RADIUS := 0.085                # 小纽扣半径
 const BUTTON_HEIGHT := 0.012
-# 3 枚小纽扣：板面下方中间一排（z 靠近前缘、x 居中）
-const BUTTONS := [Vector3(-0.34, 0.0, 1.05), Vector3(0.0, 0.0, 1.05), Vector3(0.34, 0.0, 1.05)]
+# 3 枚小纽扣：板面下方中间一排（z 靠近前缘、x 居中）；1 拼图 + 2 红书。
+const BUTTONS := [
+	{"pos": Vector3(-0.34, 0.0, 1.05), "face": "res://textures/button_puzzle.png"},
+	{"pos": Vector3(0.0, 0.0, 1.05), "face": "res://textures/button_book.png"},
+	{"pos": Vector3(0.34, 0.0, 1.05), "face": "res://textures/button_book.png"},
+]
 const MAX_TILT_DEG := 22.0                 # 重力最大倾角
 const MOVE_SOUND_STEP := 0.07              # 拖动每滑过这么远响一次“哒”
 const ROT_SENS := 0.0038                   # 拖拽旋转灵敏度（弧度/像素）
@@ -150,12 +154,12 @@ func _spawn_tokens() -> void:
 		_make_token(data, true)
 		_make_token(data, false)
 	# 每面（正/反）下方中间各一排 3 枚。
-	for bpos in BUTTONS:
-		_make_button(bpos, true)
-		_make_button(bpos, false)
+	for bdata in BUTTONS:
+		_make_button(bdata, true)
+		_make_button(bdata, false)
 
-# 小纽扣：紫色小圆片，正反两面贴紫绒面，可拖拽（无浮标）。
-func _make_button(pos: Vector3, is_top: bool) -> void:
+# 小纽扣：紫色小圆片（带各自符号），正反两面贴，可拖拽（无浮标）。
+func _make_button(data: Dictionary, is_top: bool) -> void:
 	var body := StaticBody3D.new()
 	var mesh := MeshInstance3D.new()
 	var cyl := CylinderMesh.new()
@@ -169,7 +173,7 @@ func _make_button(pos: Vector3, is_top: bool) -> void:
 	mesh.material_override = mat
 	body.add_child(mesh)
 
-	var fmat := _face_material("res://textures/button_face.png")
+	var fmat := _face_material(data.face)
 	_add_face(body, BUTTON_HEIGHT * 0.5 + 0.0006, -90.0, fmat, BUTTON_RADIUS)
 	_add_face(body, -BUTTON_HEIGHT * 0.5 - 0.0006, 90.0, fmat, BUTTON_RADIUS)
 
@@ -181,7 +185,7 @@ func _make_button(pos: Vector3, is_top: bool) -> void:
 	body.add_child(col)
 
 	var base_y := (TOP_SURF + BUTTON_HEIGHT * 0.5) if is_top else -(TOP_SURF + BUTTON_HEIGHT * 0.5)
-	body.position = Vector3(pos.x, base_y, pos.z)
+	body.position = Vector3(data.pos.x, base_y, data.pos.z)
 	body.set_meta("token", true)
 	body.set_meta("plane_y", base_y)
 	_table.add_child(body)
