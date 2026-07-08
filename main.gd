@@ -6,6 +6,8 @@ extends Node3D
 
 const BOARD_SIZE := Vector2(3.2, 2.2)     # 板面尺寸（米）
 const BOARD_THICK := 0.12
+const VELVET_H := 0.012                     # 正面绒布厚度
+const VELVET_INSET := 0.18                  # 绒布四边内缩（露出木边框）
 const TOKEN_RADIUS := 0.22
 const TOKEN_HEIGHT := 0.07
 const TOKEN_TOP_Y := TOKEN_HEIGHT * 0.5
@@ -102,24 +104,39 @@ func _build_lights() -> void:
 	spot.shadow_enabled = true
 
 func _build_board() -> void:
-	# 板子带碰撞体：挡住射线，免得从正面透过板子抓到背面的令牌。
+	# 木板本体（带碰撞体：挡住射线，免得从正面透过板子抓到背面的令牌）。背面即裸木。
 	var body := StaticBody3D.new()
 	body.position = Vector3(0.0, -BOARD_THICK * 0.5, 0.0)
 	var board := MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = Vector3(BOARD_SIZE.x, BOARD_THICK, BOARD_SIZE.y)
 	board.mesh = box
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.30, 0.17, 0.44)    # 紫绒布
-	mat.roughness = 0.95
-	mat.metallic = 0.0
-	board.material_override = mat
+	var wood := StandardMaterial3D.new()
+	wood.albedo_color = Color(0.42, 0.27, 0.14)    # 木色
+	wood.roughness = 0.7
+	wood.metallic = 0.0
+	board.material_override = wood
 	body.add_child(board)
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
 	shape.size = Vector3(BOARD_SIZE.x, BOARD_THICK, BOARD_SIZE.y)
 	col.shape = shape
 	body.add_child(col)
+
+	# 正面吸附的紫绒布：略内缩、露出一圈木边框；只贴正面，背面保持纯木。
+	var velvet := MeshInstance3D.new()
+	var vbox := BoxMesh.new()
+	vbox.size = Vector3(BOARD_SIZE.x - VELVET_INSET * 2.0, VELVET_H, BOARD_SIZE.y - VELVET_INSET * 2.0)
+	velvet.mesh = vbox
+	var vm := StandardMaterial3D.new()
+	vm.albedo_color = Color(0.32, 0.16, 0.46)    # 紫绒布
+	vm.roughness = 0.98
+	vm.metallic = 0.0
+	velvet.material_override = vm
+	# body 局部：木板顶面在 +BOARD_THICK/2，绒布叠在其上。
+	velvet.position = Vector3(0.0, BOARD_THICK * 0.5 + VELVET_H * 0.5, 0.0)
+	body.add_child(velvet)
+
 	_table.add_child(body)
 
 func _spawn_tokens() -> void:
@@ -161,8 +178,8 @@ func _make_token(data: Dictionary, is_top: bool) -> void:
 	lbl.modulate = Color(1, 1, 1)
 	lbl.outline_size = 14
 	lbl.outline_modulate = Color(0, 0, 0, 0.7)
-	# 令牌所在面的高度：正面在板顶之上，背面在板底之下（浮标随之在外侧）。
-	var base_y := TOKEN_TOP_Y if is_top else -(BOARD_THICK + TOKEN_TOP_Y)
+	# 令牌所在面的高度：正面坐在绒布上，背面坐在裸木底面（浮标随之在外侧）。
+	var base_y := (VELVET_H + TOKEN_HEIGHT * 0.5) if is_top else -(BOARD_THICK + TOKEN_HEIGHT * 0.5)
 	var label_y := (TOKEN_HEIGHT * 0.5 + 0.22) if is_top else -(TOKEN_HEIGHT * 0.5 + 0.22)
 	lbl.position = Vector3(0.0, label_y, 0.0)
 	body.add_child(lbl)
