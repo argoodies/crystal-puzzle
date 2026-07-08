@@ -112,8 +112,9 @@ func _build_board() -> void:
 	box.size = Vector3(BOARD_SIZE.x, BOARD_THICK, BOARD_SIZE.y)
 	board.mesh = box
 	var wood := StandardMaterial3D.new()
-	wood.albedo_color = Color(0.42, 0.27, 0.14)    # 木色
-	wood.roughness = 0.7
+	wood.albedo_texture = _make_wood_texture()     # 程序生成的木纹
+	wood.uv1_scale = Vector3(2.4, 1.6, 1.0)        # 让年轮纹在板面重复几遍
+	wood.roughness = 0.65
 	wood.metallic = 0.0
 	board.material_override = wood
 	body.add_child(board)
@@ -132,12 +133,52 @@ func _build_board() -> void:
 	vm.albedo_color = Color(0.32, 0.16, 0.46)    # 紫绒布
 	vm.roughness = 0.98
 	vm.metallic = 0.0
+	# 毛绒感：① rim 边缘回光（velvet 招牌的绒面高光）；② 细噪声法线做微绒毛。
+	vm.rim_enabled = true
+	vm.rim = 0.75
+	vm.rim_tint = 0.45
+	vm.normal_enabled = true
+	vm.normal_scale = 0.35
+	vm.normal_texture = _make_fuzz_normal()
+	vm.uv1_scale = Vector3(9.0, 6.0, 1.0)        # 绒毛纹理铺细密
 	velvet.material_override = vm
 	# body 局部：木板顶面在 +BOARD_THICK/2，绒布叠在其上。
 	velvet.position = Vector3(0.0, BOARD_THICK * 0.5 + VELVET_H * 0.5, 0.0)
 	body.add_child(velvet)
 
 	_table.add_child(body)
+
+# 程序生成木纹：沿一个方向的年轮线 + 噪声扰动，深浅两种木色混合。
+func _make_wood_texture() -> ImageTexture:
+	var size := 256
+	var img := Image.create_empty(size, size, false, Image.FORMAT_RGB8)
+	var n := FastNoiseLite.new()
+	n.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	n.frequency = 0.012
+	var dark := Color(0.30, 0.18, 0.08)
+	var light := Color(0.56, 0.38, 0.21)
+	for y in size:
+		for x in size:
+			var warp := n.get_noise_2d(float(x), float(y)) * 20.0
+			var rings := sin((float(x) + warp) * 0.30)
+			var t := pow(0.5 + 0.5 * rings, 1.7)
+			var fine := 0.06 * n.get_noise_2d(float(x) * 3.0, float(y) * 0.4)
+			img.set_pixel(x, y, dark.lerp(light, clampf(t + fine, 0.0, 1.0)))
+	return ImageTexture.create_from_image(img)
+
+# 程序生成高频噪声法线，给绒面加细密的绒毛微起伏。
+func _make_fuzz_normal() -> NoiseTexture2D:
+	var tex := NoiseTexture2D.new()
+	tex.width = 256
+	tex.height = 256
+	tex.seamless = true
+	tex.as_normal_map = true
+	tex.bump_strength = 1.4
+	var n := FastNoiseLite.new()
+	n.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	n.frequency = 0.32
+	tex.noise = n
+	return tex
 
 func _spawn_tokens() -> void:
 	# 正面一副、背面镜像同样一副，都可交互。
