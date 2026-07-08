@@ -4,13 +4,14 @@ extends Node3D
 ## 三枚令牌：🧩 解谜大师 / ✝️ 异端分子 / 👻 阎罗。
 ## iOS 与 Web（GitHub Pages）同一套代码。场景全部脚本生成。
 
-const BOARD_SIZE := Vector2(3.2, 2.2)     # 板面尺寸（米）
-const BOARD_THICK := 0.12
-const VELVET_H := 0.012                     # 正面绒布厚度
-const VELVET_INSET := 0.18                  # 绒布四边内缩（露出木边框）
+const BOARD_SCALE := 3.0                    # GLB 模型放大倍数
+const MODEL_HX := 0.4887                    # 模型半宽（X，来自 GLB 包围盒）
+const MODEL_HY := 0.0417                    # 模型半厚（Y）
+const MODEL_HZ := 0.4896                    # 模型半深（Z）
+const TOP_SURF := MODEL_HY * BOARD_SCALE    # 缩放后毛毯面高度
+const BOARD_SIZE := Vector2(MODEL_HX * 2.0 * BOARD_SCALE, MODEL_HZ * 2.0 * BOARD_SCALE)
 const TOKEN_RADIUS := 0.22
 const TOKEN_HEIGHT := 0.07
-const TOKEN_TOP_Y := TOKEN_HEIGHT * 0.5
 const MAX_TILT_DEG := 22.0                 # 重力最大倾角
 const MOVE_SOUND_STEP := 0.07              # 拖动每滑过这么远响一次“哒”
 const ROT_SENS := 0.0038                   # 拖拽旋转灵敏度（弧度/像素）
@@ -104,81 +105,18 @@ func _build_lights() -> void:
 	spot.shadow_enabled = true
 
 func _build_board() -> void:
-	# 木板本体（带碰撞体：挡住射线，免得从正面透过板子抓到背面的令牌）。背面即裸木。
+	# 用 GLB 模型（木板 + 已带的紫毛毯）作板子，居中放大。
+	# 带盒碰撞体：挡住射线，免得从正面透过板子抓到背面的令牌。
 	var body := StaticBody3D.new()
-	body.position = Vector3(0.0, -BOARD_THICK * 0.5, 0.0)
-	var board := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3(BOARD_SIZE.x, BOARD_THICK, BOARD_SIZE.y)
-	board.mesh = box
-	var wood := StandardMaterial3D.new()
-	wood.albedo_texture = _make_wood_texture()     # 程序生成的木纹
-	wood.uv1_scale = Vector3(2.4, 1.6, 1.0)        # 让年轮纹在板面重复几遍
-	wood.roughness = 0.65
-	wood.metallic = 0.0
-	board.material_override = wood
-	body.add_child(board)
+	var model := (load("res://models/board.glb") as PackedScene).instantiate()
+	model.scale = Vector3(BOARD_SCALE, BOARD_SCALE, BOARD_SCALE)
+	body.add_child(model)
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
-	shape.size = Vector3(BOARD_SIZE.x, BOARD_THICK, BOARD_SIZE.y)
+	shape.size = Vector3(MODEL_HX * 2.0 * BOARD_SCALE, MODEL_HY * 2.0 * BOARD_SCALE, MODEL_HZ * 2.0 * BOARD_SCALE)
 	col.shape = shape
 	body.add_child(col)
-
-	# 正面吸附的紫绒布：略内缩、露出一圈木边框；只贴正面，背面保持纯木。
-	var velvet := MeshInstance3D.new()
-	var vbox := BoxMesh.new()
-	vbox.size = Vector3(BOARD_SIZE.x - VELVET_INSET * 2.0, VELVET_H, BOARD_SIZE.y - VELVET_INSET * 2.0)
-	velvet.mesh = vbox
-	var vm := StandardMaterial3D.new()
-	vm.albedo_color = Color(0.32, 0.16, 0.46)    # 紫绒布
-	vm.roughness = 0.98
-	vm.metallic = 0.0
-	# 毛绒感：① rim 边缘回光（velvet 招牌的绒面高光）；② 细噪声法线做微绒毛。
-	vm.rim_enabled = true
-	vm.rim = 0.75
-	vm.rim_tint = 0.45
-	vm.normal_enabled = true
-	vm.normal_scale = 0.35
-	vm.normal_texture = _make_fuzz_normal()
-	vm.uv1_scale = Vector3(9.0, 6.0, 1.0)        # 绒毛纹理铺细密
-	velvet.material_override = vm
-	# body 局部：木板顶面在 +BOARD_THICK/2，绒布叠在其上。
-	velvet.position = Vector3(0.0, BOARD_THICK * 0.5 + VELVET_H * 0.5, 0.0)
-	body.add_child(velvet)
-
 	_table.add_child(body)
-
-# 程序生成木纹：沿一个方向的年轮线 + 噪声扰动，深浅两种木色混合。
-func _make_wood_texture() -> ImageTexture:
-	var size := 256
-	var img := Image.create_empty(size, size, false, Image.FORMAT_RGB8)
-	var n := FastNoiseLite.new()
-	n.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	n.frequency = 0.012
-	var dark := Color(0.30, 0.18, 0.08)
-	var light := Color(0.56, 0.38, 0.21)
-	for y in size:
-		for x in size:
-			var warp := n.get_noise_2d(float(x), float(y)) * 20.0
-			var rings := sin((float(x) + warp) * 0.30)
-			var t := pow(0.5 + 0.5 * rings, 1.7)
-			var fine := 0.06 * n.get_noise_2d(float(x) * 3.0, float(y) * 0.4)
-			img.set_pixel(x, y, dark.lerp(light, clampf(t + fine, 0.0, 1.0)))
-	return ImageTexture.create_from_image(img)
-
-# 程序生成高频噪声法线，给绒面加细密的绒毛微起伏。
-func _make_fuzz_normal() -> NoiseTexture2D:
-	var tex := NoiseTexture2D.new()
-	tex.width = 256
-	tex.height = 256
-	tex.seamless = true
-	tex.as_normal_map = true
-	tex.bump_strength = 1.4
-	var n := FastNoiseLite.new()
-	n.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	n.frequency = 0.32
-	tex.noise = n
-	return tex
 
 func _spawn_tokens() -> void:
 	# 正面一副、背面镜像同样一副，都可交互。
@@ -219,8 +157,8 @@ func _make_token(data: Dictionary, is_top: bool) -> void:
 	lbl.modulate = Color(1, 1, 1)
 	lbl.outline_size = 14
 	lbl.outline_modulate = Color(0, 0, 0, 0.7)
-	# 令牌所在面的高度：正面坐在绒布上，背面坐在裸木底面（浮标随之在外侧）。
-	var base_y := (VELVET_H + TOKEN_HEIGHT * 0.5) if is_top else -(BOARD_THICK + TOKEN_HEIGHT * 0.5)
+	# 令牌所在面的高度：正面坐在毛毯面上，背面坐在木板底面（浮标随之在外侧）。
+	var base_y := (TOP_SURF + TOKEN_HEIGHT * 0.5) if is_top else -(TOP_SURF + TOKEN_HEIGHT * 0.5)
 	var label_y := (TOKEN_HEIGHT * 0.5 + 0.22) if is_top else -(TOKEN_HEIGHT * 0.5 + 0.22)
 	lbl.position = Vector3(0.0, label_y, 0.0)
 	body.add_child(lbl)
