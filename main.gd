@@ -110,6 +110,9 @@ func _build_lights() -> void:
 	spot.shadow_enabled = true
 
 func _build_board() -> void:
+	# 板子带碰撞体：挡住射线，免得从正面透过板子抓到背面的令牌。
+	var body := StaticBody3D.new()
+	body.position = Vector3(0.0, -BOARD_THICK * 0.5, 0.0)
 	var board := MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = Vector3(BOARD_SIZE.x, BOARD_THICK, BOARD_SIZE.y)
@@ -119,14 +122,21 @@ func _build_board() -> void:
 	mat.roughness = 0.95
 	mat.metallic = 0.0
 	board.material_override = mat
-	board.position = Vector3(0.0, -BOARD_THICK * 0.5, 0.0)
-	_table.add_child(board)
+	body.add_child(board)
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(BOARD_SIZE.x, BOARD_THICK, BOARD_SIZE.y)
+	col.shape = shape
+	body.add_child(col)
+	_table.add_child(body)
 
 func _spawn_tokens() -> void:
+	# 正面一副、背面镜像同样一副，都可交互。
 	for data in TOKENS:
-		_make_token(data)
+		_make_token(data, true)
+		_make_token(data, false)
 
-func _make_token(data: Dictionary) -> void:
+func _make_token(data: Dictionary, is_top: bool) -> void:
 	var body := StaticBody3D.new()
 
 	var mesh := MeshInstance3D.new()
@@ -159,13 +169,15 @@ func _make_token(data: Dictionary) -> void:
 	lbl.modulate = Color(1, 1, 1)
 	lbl.outline_size = 14
 	lbl.outline_modulate = Color(0, 0, 0, 0.7)
-	lbl.position = Vector3(0.0, TOKEN_HEIGHT * 0.5 + 0.22, 0.0)
+	# 令牌所在面的高度：正面在板顶之上，背面在板底之下（浮标随之在外侧）。
+	var base_y := TOKEN_TOP_Y if is_top else -(BOARD_THICK + TOKEN_TOP_Y)
+	var label_y := (TOKEN_HEIGHT * 0.5 + 0.22) if is_top else -(TOKEN_HEIGHT * 0.5 + 0.22)
+	lbl.position = Vector3(0.0, label_y, 0.0)
 	body.add_child(lbl)
 
-	var p: Vector3 = data.pos
-	p.y = TOKEN_TOP_Y
-	body.position = p
+	body.position = Vector3(data.pos.x, base_y, data.pos.z)
 	body.set_meta("token", true)
+	body.set_meta("plane_y", base_y)   # 拖拽时贴着自己这一面移动
 	_table.add_child(body)
 
 # MARK: 右下角控制球（虚拟转盘）——重力/罗盘之外的手动旋转。
@@ -275,7 +287,8 @@ func _try_pick(screen_pos: Vector2) -> void:
 func _drag_to(screen_pos: Vector2) -> void:
 	var from := _camera.project_ray_origin(screen_pos)
 	var dir := _camera.project_ray_normal(screen_pos)
-	var hit = _board_plane().intersects_ray(from, dir)
+	var py: float = _dragging.get_meta("plane_y")
+	var hit = _board_plane(py).intersects_ray(from, dir)
 	if hit == null:
 		return
 	var local: Vector3 = _table.to_local(hit)
@@ -283,7 +296,7 @@ func _drag_to(screen_pos: Vector2) -> void:
 	var hz := BOARD_SIZE.y * 0.5 - TOKEN_RADIUS
 	local.x = clampf(local.x, -hx, hx)
 	local.z = clampf(local.z, -hz, hz)
-	local.y = TOKEN_TOP_Y
+	local.y = py
 	_dragging.position = local
 	# 滑过一定距离响一次“哒”。
 	if _dragging.global_position.distance_to(_last_sound_pos) >= MOVE_SOUND_STEP:
@@ -291,8 +304,8 @@ func _drag_to(screen_pos: Vector2) -> void:
 		if not _sfx_move.playing:
 			_sfx_move.play()
 
-## 当前板面（随 _table 倾斜）的世界平面，用于把屏幕拖拽反投影到板上。
-func _board_plane() -> Plane:
+## 令牌所在面（随 _table 倾斜）的世界平面，用于把屏幕拖拽反投影到板上。
+func _board_plane(plane_y: float) -> Plane:
 	var n := _table.global_transform.basis.y.normalized()
-	var p := _table.to_global(Vector3(0.0, TOKEN_TOP_Y, 0.0))
+	var p := _table.to_global(Vector3(0.0, plane_y, 0.0))
 	return Plane(n, p)
