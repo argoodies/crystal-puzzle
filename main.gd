@@ -14,11 +14,11 @@ const TOKEN_RADIUS := 0.22
 const TOKEN_HEIGHT := 0.014                 # 纸板厚度
 const BUTTON_RADIUS := 0.085                # 小纽扣半径
 const BUTTON_HEIGHT := 0.012
-# 3 枚小纽扣：板面下方中间一排（z 靠近前缘、x 居中）；1 拼图 + 2 红书。
+# 3 枚小纽扣：板面下方边缘附近一排（z 靠近前缘 1.25、x 居中）；1 拼图 + 2 红书。
 const BUTTONS := [
-	{"pos": Vector3(-0.34, 0.0, 1.05), "face": "res://textures/button_puzzle.png"},
-	{"pos": Vector3(0.0, 0.0, 1.05), "face": "res://textures/button_book.png"},
-	{"pos": Vector3(0.34, 0.0, 1.05), "face": "res://textures/button_book.png"},
+	{"pos": Vector3(-0.34, 0.0, 1.25), "face": "res://textures/button_puzzle.png"},
+	{"pos": Vector3(0.0, 0.0, 1.25), "face": "res://textures/button_book.png"},
+	{"pos": Vector3(0.34, 0.0, 1.25), "face": "res://textures/button_book.png"},
 ]
 const MAX_TILT_DEG := 22.0                 # 重力最大倾角
 const MOVE_SOUND_STEP := 0.07              # 拖动每滑过这么远响一次“哒”
@@ -188,7 +188,9 @@ func _make_button(data: Dictionary, is_top: bool) -> void:
 	body.add_child(col)
 
 	var base_y := (TOP_SURF + BUTTON_HEIGHT * 0.5) if is_top else -(TOP_SURF + BUTTON_HEIGHT * 0.5)
-	body.position = Vector3(data.pos.x, base_y, data.pos.z)
+	# 背面那份 z 取反：翻面（180°）后它们同样落在该面的下方边缘。
+	var z := data.pos.z if is_top else -data.pos.z
+	body.position = Vector3(data.pos.x, base_y, z)
 	body.set_meta("token", true)
 	body.set_meta("plane_y", base_y)
 	_table.add_child(body)
