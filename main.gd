@@ -43,6 +43,7 @@ var _pinch_dist := 0.0
 
 var _manual_rot := Vector3.ZERO             # 拖拽累积的板子旋转（俯仰 x / 自转 y）
 var _rotating := false                       # 正在拖动板面/空白旋转板子
+var _intro := false                          # 开场翻转动画进行中（暂停常规旋转）
 
 var _font: FontFile
 var _sfx_pick: AudioStreamPlayer
@@ -56,6 +57,7 @@ var _night := false
 var _toggle_btn: Button
 
 func _ready() -> void:
+	randomize()                               # 每次启动随机（令牌位置/歪斜）
 	_load_font()
 	_build_audio()
 	_build_environment()
@@ -66,6 +68,20 @@ func _ready() -> void:
 	_build_board()
 	_spawn_tokens()
 	_build_toggle()
+	_play_intro()
+
+# 开场：板子快速上下翻转 4 周后停下。
+func _play_intro() -> void:
+	_intro = true
+	_manual_rot = Vector3.ZERO
+	_table.rotation = Vector3.ZERO
+	var tw := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_table, "rotation:x", TAU * 4.0, 1.5)
+	tw.tween_callback(_end_intro)
+
+func _end_intro() -> void:
+	_table.rotation = Vector3.ZERO            # 4 周 = 回正，重置避免 _process 回绕
+	_intro = false
 
 # 右上角日/夜切换按钮：☀️ 暖黄光 ↔ 🌙 冷蓝光。
 func _build_toggle() -> void:
@@ -218,10 +234,16 @@ func _build_board() -> void:
 	_table.add_child(body)
 
 func _spawn_tokens() -> void:
-	# 正面一副、背面镜像同样一副，都可交互。
+	# 三个位置随机分配给三枚令牌（每次启动不同）；正反两面镜像。
+	var slots := []
 	for data in TOKENS:
-		_make_token(data, true)
-		_make_token(data, false)
+		slots.append(data.pos)
+	slots.shuffle()
+	var i := 0
+	for data in TOKENS:
+		_make_token(data, true, slots[i])
+		_make_token(data, false, slots[i])
+		i += 1
 	# 每面（正/反）下方中间各一排 3 枚。
 	for bdata in BUTTONS:
 		_make_button(bdata, true)
@@ -268,7 +290,7 @@ func _make_button(data: Dictionary, is_top: bool) -> void:
 	_table.add_child(body)
 	_pieces.append(body)
 
-func _make_token(data: Dictionary, is_top: bool) -> void:
+func _make_token(data: Dictionary, is_top: bool, pos: Vector3) -> void:
 	var body := StaticBody3D.new()
 
 	# 薄纸板圆盘：边缘米色（略染各自的色），正反面贴令牌图。
@@ -303,7 +325,7 @@ func _make_token(data: Dictionary, is_top: bool) -> void:
 	# 名字：小字，浮在令牌上沿以上 0.3 直径处（-Z 为屏幕上方）。
 	_add_label(body, data.name, is_top, TOKEN_HEIGHT * 0.5 + 0.02, -(TOKEN_RADIUS * 1.6), 52)
 
-	body.position = Vector3(data.pos.x, base_y, data.pos.z)
+	body.position = Vector3(pos.x, base_y, pos.z)
 	body.set_meta("token", true)
 	body.set_meta("plane_y", base_y)   # 拖拽时贴着自己这一面移动
 	body.set_meta("radius", TOKEN_RADIUS)
@@ -317,6 +339,8 @@ func _rotate_by(delta: Vector2) -> void:
 
 ## 每帧：板子 = 重力倾斜（有传感器才动）+ 拖拽累积的手动旋转。
 func _process(delta: float) -> void:
+	if _intro:
+		return                                # 开场动画期间不做常规旋转/分离
 	var g := Input.get_gravity()
 	var grav := Vector3.ZERO
 	if g.length() > 0.5:
