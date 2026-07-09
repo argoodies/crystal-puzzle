@@ -235,26 +235,30 @@ func _build_board() -> void:
 	_table.add_child(body)
 
 func _spawn_tokens() -> void:
-	# 三个位置随机分配给三枚令牌（每次启动不同）；正反两面镜像。
-	var slots := []
+	# 三个位置随机分配给三枚令牌；正面、背面各自独立随机。
+	var front_slots := []
 	for data in TOKENS:
-		slots.append(data.pos)
-	slots.shuffle()
+		front_slots.append(data.pos)
+	var back_slots := front_slots.duplicate()
+	front_slots.shuffle()
+	back_slots.shuffle()
 	var i := 0
 	for data in TOKENS:
-		_make_token(data, true, slots[i])
-		_make_token(data, false, slots[i])
+		_make_token(data, true, front_slots[i])
+		_make_token(data, false, back_slots[i])
 		i += 1
 	# 每面（正/反）下方中间各一排 3 枚。
-	# 4 个纽扣的位置随机分配（每次启动顺序不同），但仍是相邻一排。
-	var bslots := []
+	# 4 个纽扣的位置随机分配，仍是相邻一排；正面、背面各自独立随机。
+	var bfront := []
 	for bdata in BUTTONS:
-		bslots.append(bdata.pos)
-	bslots.shuffle()
+		bfront.append(bdata.pos)
+	var bback := bfront.duplicate()
+	bfront.shuffle()
+	bback.shuffle()
 	var j := 0
 	for bdata in BUTTONS:
-		_make_button(bdata, true, bslots[j])
-		_make_button(bdata, false, bslots[j])
+		_make_button(bdata, true, bfront[j])
+		_make_button(bdata, false, bback[j])
 		j += 1
 
 # 小纽扣：紫色小圆片（带各自符号），正反两面贴，可拖拽（无浮标）。
