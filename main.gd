@@ -22,7 +22,7 @@ const BUTTONS := [
 	{"pos": Vector3(0.54, 0.0, 1.10), "face": "res://textures/button_puzzle.png", "label": "已猜测"},
 ]
 const MAX_TILT_DEG := 22.0                 # 重力最大倾角
-const ROT_SENS := 0.0038                   # 拖拽旋转灵敏度（弧度/像素）
+const ROT_SENS := 0.0024                   # 拖拽旋转灵敏度（弧度/像素）
 
 # 三枚令牌：emoji、中文名、顶面色。
 const TOKENS := [
@@ -43,6 +43,12 @@ var _font: FontFile
 var _sfx_pick: AudioStreamPlayer
 var _sfx_drop: AudioStreamPlayer
 
+var _dir: DirectionalLight3D                 # 主光/聚光/环境，用于日夜切换
+var _spot: SpotLight3D
+var _env: Environment
+var _night := false
+var _toggle_btn: Button
+
 func _ready() -> void:
 	_load_font()
 	_build_audio()
@@ -53,6 +59,45 @@ func _ready() -> void:
 	add_child(_table)
 	_build_board()
 	_spawn_tokens()
+	_build_toggle()
+
+# 右上角日/夜切换按钮：☀️ 暖黄光 ↔ 🌙 冷蓝光。
+func _build_toggle() -> void:
+	var layer := CanvasLayer.new()
+	add_child(layer)
+	_toggle_btn = Button.new()
+	_toggle_btn.flat = true
+	_toggle_btn.focus_mode = Control.FOCUS_NONE
+	_toggle_btn.anchor_left = 1.0
+	_toggle_btn.anchor_right = 1.0
+	_toggle_btn.offset_left = -104.0
+	_toggle_btn.offset_top = 44.0                 # 避开刘海安全区
+	_toggle_btn.offset_right = -28.0
+	_toggle_btn.offset_bottom = 120.0
+	_toggle_btn.add_theme_font_override("font", load("res://fonts/NotoEmoji-toggle.ttf"))
+	_toggle_btn.add_theme_font_size_override("font_size", 46)
+	_toggle_btn.text = "☀️"
+	_toggle_btn.pressed.connect(_on_toggle)
+	layer.add_child(_toggle_btn)
+
+func _on_toggle() -> void:
+	_night = not _night
+	_apply_lighting()
+
+# 应用日/夜光照。
+func _apply_lighting() -> void:
+	if _night:
+		_dir.light_color = Color(0.62, 0.74, 1.0)
+		_spot.light_color = Color(0.5, 0.68, 1.0)
+		_env.background_color = Color(0.02, 0.03, 0.09)
+		_env.ambient_light_color = Color(0.30, 0.40, 0.60)
+		_toggle_btn.text = "🌙"
+	else:
+		_dir.light_color = Color(1.0, 0.94, 0.85)
+		_spot.light_color = Color(1.0, 0.88, 0.66)
+		_env.background_color = Color(0.05, 0.03, 0.09)
+		_env.ambient_light_color = Color(0.42, 0.36, 0.52)
+		_toggle_btn.text = "☀️"
 
 func _load_font() -> void:
 	# 中文小字用 Noto Sans SC 子集（已含令牌名与纽扣文案）。不再用 emoji。
@@ -109,13 +154,13 @@ func _make_player(path: String, volume_db: float) -> AudioStreamPlayer:
 
 func _build_environment() -> void:
 	var we := WorldEnvironment.new()
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.05, 0.03, 0.09)
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.42, 0.36, 0.52)
-	env.ambient_light_energy = 0.45
-	we.environment = env
+	_env = Environment.new()
+	_env.background_mode = Environment.BG_COLOR
+	_env.background_color = Color(0.05, 0.03, 0.09)
+	_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	_env.ambient_light_color = Color(0.42, 0.36, 0.52)
+	_env.ambient_light_energy = 0.45
+	we.environment = _env
 	add_child(we)
 
 func _build_camera() -> void:
@@ -127,24 +172,24 @@ func _build_camera() -> void:
 	_camera.current = true                    # 关键：脚本相机必须显式设为当前
 
 func _build_lights() -> void:
-	# 主平行光（冷紫环境里的一缕暖光）。
-	var dir := DirectionalLight3D.new()
-	dir.rotation_degrees = Vector3(-58.0, -32.0, 0.0)
-	dir.light_color = Color(1.0, 0.94, 0.85)
-	dir.light_energy = 0.9
-	dir.shadow_enabled = true
-	add_child(dir)
-	# 头顶聚光：在板面投一圈暖光池，令牌顶面有高光——“光照感”。灯固定，板倾斜时高光会游走。
-	var spot := SpotLight3D.new()
-	add_child(spot)
-	spot.position = Vector3(0.0, 3.3, 0.5)
-	spot.look_at(Vector3(0.0, 0.0, 0.0), Vector3.FORWARD)
-	spot.light_color = Color(1.0, 0.88, 0.66)
-	spot.light_energy = 6.0
-	spot.spot_range = 9.0
-	spot.spot_angle = 42.0
-	spot.spot_attenuation = 1.2
-	spot.shadow_enabled = true
+	# 主平行光。
+	_dir = DirectionalLight3D.new()
+	_dir.rotation_degrees = Vector3(-58.0, -32.0, 0.0)
+	_dir.light_color = Color(1.0, 0.94, 0.85)
+	_dir.light_energy = 0.9
+	_dir.shadow_enabled = true
+	add_child(_dir)
+	# 头顶聚光：在板面投一圈光池，令牌顶面有高光——“光照感”。灯固定，板倾斜时高光会游走。
+	_spot = SpotLight3D.new()
+	add_child(_spot)
+	_spot.position = Vector3(0.0, 3.3, 0.5)
+	_spot.look_at(Vector3(0.0, 0.0, 0.0), Vector3.FORWARD)
+	_spot.light_color = Color(1.0, 0.88, 0.66)
+	_spot.light_energy = 6.0
+	_spot.spot_range = 9.0
+	_spot.spot_angle = 42.0
+	_spot.spot_attenuation = 1.2
+	_spot.shadow_enabled = true
 
 func _build_board() -> void:
 	# 用 GLB 模型（木板 + 已带的紫毛毯）作板子，居中放大。
@@ -338,13 +383,11 @@ func _try_pick(screen_pos: Vector2) -> void:
 	var space := get_world_3d().direct_space_state
 	var q := PhysicsRayQueryParameters3D.create(from, from + dir * 100.0)
 	var hit := space.intersect_ray(q)
-	if hit.is_empty():
-		_rotating = true                       # 点到空白背景 → 旋转板子
-		return
-	if hit.collider.has_meta("token"):
+	if not hit.is_empty() and hit.collider.has_meta("token"):
 		_dragging = hit.collider               # 点到令牌 → 拖令牌
 		_sfx_pick.play()
-	# 否则点到木板 → 什么都不做（不旋转）
+	else:
+		_rotating = true                       # 点到木板或空白背景 → 旋转板子
 
 func _drag_to(screen_pos: Vector2) -> void:
 	var from := _camera.project_ray_origin(screen_pos)
