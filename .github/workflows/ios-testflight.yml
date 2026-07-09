@@ -76,13 +76,14 @@ jobs:
           SCHEME=$(basename "$XCPROJ" .xcodeproj)
           echo "xcodeproj=$XCPROJ scheme=$SCHEME"
 
-          # 改生成工程里所有 Info.plist：唯一 build 号 + 补 UIDeviceFamily（Godot 没写，Apple 校验必需）。
+          # 改生成工程里所有 Info.plist：唯一 build 号 + UIDeviceFamily（Godot 没写，Apple 校验必需）+ 中文显示名。
           for PL in $(find build/ios -name '*-Info.plist' -o -name 'Info.plist'); do
             /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$PL" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Delete :UIDeviceFamily" "$PL" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily array" "$PL" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:0 integer 1" "$PL" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:1 integer 2" "$PL" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 小魔典" "$PL" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string 小魔典" "$PL" 2>/dev/null || true
           done
 
           xcodebuild -project "$XCPROJ" -scheme "$SCHEME" -configuration Release \

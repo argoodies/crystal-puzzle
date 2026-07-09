@@ -6,7 +6,7 @@ config_version=5
 
 [application]
 
-config/name="DeskFeel"
+config/name="小魔典"
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.png"
