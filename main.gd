@@ -246,12 +246,19 @@ func _spawn_tokens() -> void:
 		_make_token(data, false, slots[i])
 		i += 1
 	# 每面（正/反）下方中间各一排 3 枚。
+	# 4 个纽扣的位置随机分配（每次启动顺序不同），但仍是相邻一排。
+	var bslots := []
 	for bdata in BUTTONS:
-		_make_button(bdata, true)
-		_make_button(bdata, false)
+		bslots.append(bdata.pos)
+	bslots.shuffle()
+	var j := 0
+	for bdata in BUTTONS:
+		_make_button(bdata, true, bslots[j])
+		_make_button(bdata, false, bslots[j])
+		j += 1
 
 # 小纽扣：紫色小圆片（带各自符号），正反两面贴，可拖拽（无浮标）。
-func _make_button(data: Dictionary, is_top: bool) -> void:
+func _make_button(data: Dictionary, is_top: bool, pos: Vector3) -> void:
 	var body := StaticBody3D.new()
 	var mesh := MeshInstance3D.new()
 	var cyl := CylinderMesh.new()
@@ -283,8 +290,8 @@ func _make_button(data: Dictionary, is_top: bool) -> void:
 
 	var base_y := (TOP_SURF + BUTTON_HEIGHT * 0.5) if is_top else -(TOP_SURF + BUTTON_HEIGHT * 0.5)
 	# 背面那份 z 取反：翻面（180°）后它们同样落在该面的下方边缘。
-	var z: float = data.pos.z if is_top else -data.pos.z
-	body.position = Vector3(data.pos.x, base_y, z)
+	var z: float = pos.z if is_top else -pos.z
+	body.position = Vector3(pos.x, base_y, z)
 	body.set_meta("token", true)
 	body.set_meta("plane_y", base_y)
 	body.set_meta("radius", BUTTON_RADIUS)
