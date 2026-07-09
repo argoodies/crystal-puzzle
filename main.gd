@@ -317,9 +317,8 @@ func _separate() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton or event is InputEventScreenTouch:
 		if event.pressed:
-			# 命中令牌就拖令牌；否则（点到板面或空中）拖动旋转板子。
+			# 命中令牌→拖令牌；点到木板→不动；点到空白背景→旋转板子。
 			_try_pick(event.position)
-			_rotating = _dragging == null
 		else:
 			if _dragging != null:
 				# 松手瞬间随机歪斜 ±15°（绕自身垂直轴，像随手一放）。
@@ -339,9 +338,13 @@ func _try_pick(screen_pos: Vector2) -> void:
 	var space := get_world_3d().direct_space_state
 	var q := PhysicsRayQueryParameters3D.create(from, from + dir * 100.0)
 	var hit := space.intersect_ray(q)
-	if not hit.is_empty() and hit.collider.has_meta("token"):
-		_dragging = hit.collider
+	if hit.is_empty():
+		_rotating = true                       # 点到空白背景 → 旋转板子
+		return
+	if hit.collider.has_meta("token"):
+		_dragging = hit.collider               # 点到令牌 → 拖令牌
 		_sfx_pick.play()
+	# 否则点到木板 → 什么都不做（不旋转）
 
 func _drag_to(screen_pos: Vector2) -> void:
 	var from := _camera.project_ray_origin(screen_pos)
