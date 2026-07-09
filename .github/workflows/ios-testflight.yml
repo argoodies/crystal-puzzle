@@ -1,13 +1,10 @@
 name: iOS → TestFlight
 
-# Godot 导出 iOS Xcode 工程 → xcodebuild 自动签名归档 → altool 上传。
-# 发布到既有 App 记录 io.argoodies.deskfeel（6787916716），复用 ASC API 密钥。
-# 手动触发。注意 Apple 每日上传上限对 iOS 仍生效（altool 输出报错即让 job 失败）。
+# Godot 导出 iOS Xcode 工程 → xcodebuild 自动签名归档 → altool 上传到 App Store Connect。
+# 发布到既有 App 记录 io.argoodies.deskfeel（6787916716），复用 ASC API 密钥。手动触发。
+# 需 macos-15（含 Xcode 26 / iOS 26 SDK，Apple 强制要求）。
 on:
   workflow_dispatch:
-  # 临时：每天 10:30 UTC 自动发一次（等 Apple 每日上传配额清窗）。首次成功后请删除此 schedule。
-  schedule:
-    - cron: "30 10 * * *"
 
 env:
   GODOT_VERSION: "4.6.3"
@@ -16,7 +13,7 @@ env:
 jobs:
   ios:
     name: iOS → TestFlight
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
@@ -79,9 +76,13 @@ jobs:
           SCHEME=$(basename "$XCPROJ" .xcodeproj)
           echo "xcodeproj=$XCPROJ scheme=$SCHEME"
 
-          # 每次构建唯一 build 号：改生成工程里所有 Info.plist 的 CFBundleVersion。
+          # 改生成工程里所有 Info.plist：唯一 build 号 + 补 UIDeviceFamily（Godot 没写，Apple 校验必需）。
           for PL in $(find build/ios -name '*-Info.plist' -o -name 'Info.plist'); do
             /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$PL" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Delete :UIDeviceFamily" "$PL" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily array" "$PL" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:0 integer 1" "$PL" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:1 integer 2" "$PL" 2>/dev/null || true
           done
 
           xcodebuild -project "$XCPROJ" -scheme "$SCHEME" -configuration Release \
@@ -114,7 +115,7 @@ jobs:
           # altool 对 409 等错误会 exit 0，只把 ERROR 打到 stdout，须解析后再判失败。
           xcrun altool --upload-app -f "$IPA" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee "$RUNNER_TEMP/altool-ios.log"
           if grep -qiE 'ERROR:|Validation failed' "$RUNNER_TEMP/altool-ios.log"; then
-            echo "::error::altool 上传 iOS 失败（见上方日志，如每日上传上限 409）"
+            echo "::error::altool 上传 App Store Connect 失败（见上方日志的 Validation 详情）"
             exit 1
           fi
 
