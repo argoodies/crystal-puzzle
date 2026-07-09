@@ -56,6 +56,7 @@ var _spot: SpotLight3D
 var _env: Environment
 var _night := false
 var _toggle_btn: Button
+var _refresh_btn: Button
 
 func _ready() -> void:
 	randomize()                               # 每次启动随机（令牌位置/歪斜）
@@ -84,10 +85,16 @@ func _play_intro() -> void:
 	_intro_tween.tween_method(
 		func(a: float): _table.transform = Transform3D(Basis(axis, a), Vector3.ZERO),
 		0.0, TAU * 4.0, 1.9)
-	_intro_tween.tween_callback(_end_intro)
+	# 刷新按钮同步绕中心转 4 圈（同参数、同时长）。
+	if _refresh_btn != null:
+		_refresh_btn.rotation = 0.0
+		_intro_tween.parallel().tween_property(_refresh_btn, "rotation", TAU * 4.0, 1.9)
+	_intro_tween.chain().tween_callback(_end_intro)
 
 func _end_intro() -> void:
 	_table.rotation = Vector3.ZERO            # 4 周 = 回正，重置避免 _process 回绕
+	if _refresh_btn != null:
+		_refresh_btn.rotation = 0.0
 	_intro = false
 
 # 右上角日/夜切换按钮：☀️ 暖黄光 ↔ 🌙 冷蓝光。
@@ -111,19 +118,20 @@ func _build_toggle() -> void:
 	layer.add_child(_toggle_btn)
 
 	# 右上角刷新按钮：重跑开场（重新随机放置 + 翻转 4 周）。
-	var refresh := Button.new()
-	refresh.flat = true
-	refresh.focus_mode = Control.FOCUS_NONE
-	refresh.anchor_left = 1.0
-	refresh.anchor_right = 1.0
-	refresh.offset_left = -164.0
-	refresh.offset_top = 80.0
-	refresh.offset_right = -40.0
-	refresh.offset_bottom = 204.0
-	refresh.icon = load("res://textures/icon_refresh.png")   # 白色线条刷新图标（透明底）
-	refresh.expand_icon = true
-	refresh.pressed.connect(_restart)
-	layer.add_child(refresh)
+	_refresh_btn = Button.new()
+	_refresh_btn.flat = true
+	_refresh_btn.focus_mode = Control.FOCUS_NONE
+	_refresh_btn.anchor_left = 1.0
+	_refresh_btn.anchor_right = 1.0
+	_refresh_btn.offset_left = -164.0
+	_refresh_btn.offset_top = 80.0
+	_refresh_btn.offset_right = -40.0
+	_refresh_btn.offset_bottom = 204.0
+	_refresh_btn.pivot_offset = Vector2(62.0, 62.0)          # 绕中心旋转（124x124）
+	_refresh_btn.icon = load("res://textures/icon_refresh.png")   # 白色线条刷新图标（透明底）
+	_refresh_btn.expand_icon = true
+	_refresh_btn.pressed.connect(_restart)
+	layer.add_child(_refresh_btn)
 
 # 重新开始：清掉现有令牌/纽扣，重新随机放置并重播开场翻转。
 func _restart() -> void:
