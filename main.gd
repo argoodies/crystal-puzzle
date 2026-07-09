@@ -120,12 +120,8 @@ func _build_toggle() -> void:
 	refresh.offset_top = 80.0
 	refresh.offset_right = -40.0
 	refresh.offset_bottom = 204.0
-	refresh.add_theme_font_override("font", load("res://fonts/NotoEmojiMono-refresh.ttf"))
-	refresh.add_theme_font_size_override("font_size", 66)
-	refresh.add_theme_color_override("font_color", Color(1, 1, 1))          # 单色白
-	refresh.add_theme_color_override("font_hover_color", Color(1, 1, 1))
-	refresh.add_theme_color_override("font_pressed_color", Color(0.8, 0.8, 0.8))
-	refresh.text = "🔄"
+	refresh.icon = load("res://textures/icon_refresh.png")   # 白色线条刷新图标（透明底）
+	refresh.expand_icon = true
 	refresh.pressed.connect(_restart)
 	layer.add_child(refresh)
 
