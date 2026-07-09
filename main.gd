@@ -44,6 +44,7 @@ var _pinch_dist := 0.0
 var _manual_rot := Vector3.ZERO             # 拖拽累积的板子旋转（俯仰 x / 自转 y）
 var _rotating := false                       # 正在拖动板面/空白旋转板子
 var _intro := false                          # 开场翻转动画进行中（暂停常规旋转）
+var _intro_tween: Tween
 
 var _font: FontFile
 var _sfx_pick: AudioStreamPlayer
@@ -72,13 +73,15 @@ func _ready() -> void:
 
 # 开场：板子快速上下翻转 4 周后停下。
 func _play_intro() -> void:
+	if _intro_tween != null and _intro_tween.is_valid():
+		_intro_tween.kill()               # 连点刷新：杀掉上一个，从 0 重启翻转
 	_intro = true
 	_manual_rot = Vector3.ZERO
 	_table.rotation = Vector3.ZERO
 	# 开头极快、末尾长长地降速到停。
-	var tw := create_tween().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
-	tw.tween_property(_table, "rotation:x", TAU * 4.0, 1.9)
-	tw.tween_callback(_end_intro)
+	_intro_tween = create_tween().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	_intro_tween.tween_property(_table, "rotation:x", TAU * 4.0, 1.9)
+	_intro_tween.tween_callback(_end_intro)
 
 func _end_intro() -> void:
 	_table.rotation = Vector3.ZERO            # 4 周 = 回正，重置避免 _process 回绕
