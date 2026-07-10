@@ -50,6 +50,10 @@ var _press_screen := Vector2.ZERO            # 长按检测：按下位置
 var _press_moved := false                    # 按下后是否移动过（移动则算拖拽，不触发长按）
 var _intro := false                          # 开场翻转动画进行中（暂停常规旋转）
 var _intro_tween: Tween
+var _lp_active := false                       # 长按木板检测进行中
+var _lp_start := 0                            # 长按起始时刻（毫秒）
+var _lp_pos := Vector2.ZERO                   # 长按起始位置（移动过则取消）
+var _rules_layer: CanvasLayer                 # 规则羊皮纸浮层
 
 
 var _font: FontFile
@@ -77,6 +81,7 @@ func _ready() -> void:
 	_build_board()
 	_spawn_tokens()
 	_build_toggle()
+	_build_rules()
 	_play_intro()
 
 # 开场：板子快速上下翻转 4 周后停下。
@@ -103,6 +108,51 @@ func _end_intro() -> void:
 	if _refresh_btn != null:
 		_refresh_btn.rotation = 0.0
 	_intro = false
+
+# 规则羊皮纸浮层：长按木板呼出，居中显示在画面正前方；点任意处消失。
+func _build_rules() -> void:
+	_rules_layer = CanvasLayer.new()
+	_rules_layer.layer = 20                        # 盖在所有 3D/UI 之上
+	_rules_layer.visible = false
+	add_child(_rules_layer)
+	var panel := Control.new()                     # 全屏遮罩，吃掉点击（既作背景又作关闭区）
+	panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	panel.gui_input.connect(_on_rules_input)
+	_rules_layer.add_child(panel)
+	var dim := ColorRect.new()                     # 半透明压暗背景
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0.0, 0.0, 0.0, 0.6)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(dim)
+	var tex := TextureRect.new()                   # 羊皮纸图，保持比例居中
+	tex.texture = load("res://textures/rules.png")
+	tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tex.set_anchors_preset(Control.PRESET_FULL_RECT)
+	tex.offset_left = 30.0
+	tex.offset_top = 70.0
+	tex.offset_right = -30.0
+	tex.offset_bottom = -70.0
+	tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(tex)
+
+func _show_rules() -> void:
+	_dragging = null
+	_rotating = false
+	_rules_layer.visible = true
+	_sfx_shroud.play()                             # 展开羊皮纸的“翻动”声
+	Input.vibrate_handheld(30)
+
+func _hide_rules() -> void:
+	_rules_layer.visible = false
+	_sfx_click.play()
+
+func _on_rules_input(event: InputEvent) -> void:
+	# 浮层可见时，任意一次按下 → 关闭（忽略触发那次长按的松手事件）。
+	if (event is InputEventMouseButton and event.pressed) \
+			or (event is InputEventScreenTouch and event.pressed):
+		_hide_rules()
 
 # 右上角日/夜切换按钮：☀️ 暖黄光 ↔ 🌙 冷蓝光。
 func _build_toggle() -> void:
@@ -405,6 +455,9 @@ func _rotate_by(delta: Vector2) -> void:
 func _process(delta: float) -> void:
 	if _intro:
 		return                                # 开场动画期间不做常规旋转/分离
+	if _lp_active and Time.get_ticks_msec() - _lp_start > 450:
+		_lp_active = false                    # 长按木板满 450ms 未移动 → 呼出规则羊皮纸
+		_show_rules()
 	var g := Input.get_gravity()
 	var grav := Vector3.ZERO
 	if g.length() > 0.5:
@@ -514,10 +567,13 @@ func _unhandled_input(event: InputEvent) -> void:
 					Input.vibrate_handheld(30)
 			_dragging = null
 			_rotating = false
+			_lp_active = false
 	elif event is InputEventMouseMotion or event is InputEventScreenDrag:
 		if _dragging != null:
 			_drag_to(event.position)
 		elif _rotating:
+			if _lp_active and event.position.distance_to(_lp_pos) > 14.0:
+				_lp_active = false             # 转动板子了 → 取消长按
 			_rotate_by(event.relative)
 
 func _two_touch_dist() -> float:
@@ -544,6 +600,9 @@ func _try_pick(screen_pos: Vector2) -> void:
 		_press_moved = false
 	else:
 		_rotating = true                       # 点到木板或空白背景 → 旋转板子
+		_lp_pos = screen_pos                   # 同时开始长按检测（不动住够久 → 呼出规则）
+		_lp_start = Time.get_ticks_msec()
+		_lp_active = true
 
 # 在令牌上叠加/移除死亡幡（平铺在令牌平面上，随令牌一起转翻）。
 func _toggle_shroud(tk: Node3D) -> void:
