@@ -50,9 +50,6 @@ var _press_screen := Vector2.ZERO            # 长按检测：按下位置
 var _press_moved := false                    # 按下后是否移动过（移动则算拖拽，不触发长按）
 var _intro := false                          # 开场翻转动画进行中（暂停常规旋转）
 var _intro_tween: Tween
-var _lp_active := false                       # 长按木板检测进行中
-var _lp_start := 0                            # 长按起始时刻（毫秒）
-var _lp_pos := Vector2.ZERO                   # 长按起始位置（移动过则取消）
 var _rules_layer: CanvasLayer                 # 规则羊皮纸浮层
 
 
@@ -189,6 +186,21 @@ func _build_toggle() -> void:
 	_refresh_btn.expand_icon = true
 	_refresh_btn.pressed.connect(_restart)
 	layer.add_child(_refresh_btn)
+
+	# 刷新按钮左侧相邻：问号引用按钮，点击弹出规则羊皮纸。
+	var help_btn := Button.new()
+	help_btn.flat = true
+	help_btn.focus_mode = Control.FOCUS_NONE
+	help_btn.anchor_left = 1.0
+	help_btn.anchor_right = 1.0
+	help_btn.offset_left = -308.0                            # 紧挨刷新按钮左边（间隔 20）
+	help_btn.offset_top = 80.0
+	help_btn.offset_right = -184.0
+	help_btn.offset_bottom = 204.0
+	help_btn.icon = load("res://textures/icon_help.png")    # 白色圆环内白色问号（透明底）
+	help_btn.expand_icon = true
+	help_btn.pressed.connect(_show_rules)
+	layer.add_child(help_btn)
 
 # 重新开始：清掉现有令牌/纽扣，重新随机放置并重播开场翻转。
 func _restart() -> void:
@@ -455,9 +467,6 @@ func _rotate_by(delta: Vector2) -> void:
 func _process(delta: float) -> void:
 	if _intro:
 		return                                # 开场动画期间不做常规旋转/分离
-	if _lp_active and Time.get_ticks_msec() - _lp_start > 450:
-		_lp_active = false                    # 长按木板满 450ms 未移动 → 呼出规则羊皮纸
-		_show_rules()
 	var g := Input.get_gravity()
 	var grav := Vector3.ZERO
 	if g.length() > 0.5:
@@ -567,13 +576,10 @@ func _unhandled_input(event: InputEvent) -> void:
 					Input.vibrate_handheld(30)
 			_dragging = null
 			_rotating = false
-			_lp_active = false
 	elif event is InputEventMouseMotion or event is InputEventScreenDrag:
 		if _dragging != null:
 			_drag_to(event.position)
 		elif _rotating:
-			if _lp_active and event.position.distance_to(_lp_pos) > 14.0:
-				_lp_active = false             # 转动板子了 → 取消长按
 			_rotate_by(event.relative)
 
 func _two_touch_dist() -> float:
@@ -600,9 +606,6 @@ func _try_pick(screen_pos: Vector2) -> void:
 		_press_moved = false
 	else:
 		_rotating = true                       # 点到木板或空白背景 → 旋转板子
-		_lp_pos = screen_pos                   # 同时开始长按检测（不动住够久 → 呼出规则）
-		_lp_start = Time.get_ticks_msec()
-		_lp_active = true
 
 # 在令牌上叠加/移除死亡幡（平铺在令牌平面上，随令牌一起转翻）。
 func _toggle_shroud(tk: Node3D) -> void:
