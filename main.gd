@@ -17,6 +17,9 @@ var _mat: ShaderMaterial
 var _wash: Array[Vector4] = []
 var _count := 0
 var _wash_r := 0.1                        # 冲刷笔刷半径（模型局部单位）
+var _verts: PackedVector3Array            # 模型顶点（局部空间），用于随机撒“无尘点”
+var _refresh_btn: Button
+var _spinning := false                     # 旋转4周动画中，暂停常规旋转/冲刷
 
 var _touches := {}
 var _pinch_dist := 0.0
@@ -44,6 +47,7 @@ func _ready() -> void:
 	add_child(_world)
 	_build_diamond()
 	_build_toggle()
+	_spin4()                                  # 初始也旋转 4 周
 
 # ---------- 基础环境 ----------
 
@@ -110,6 +114,19 @@ func _build_toggle() -> void:
 	_toggle_btn.text = "☀️"
 	_toggle_btn.pressed.connect(_on_toggle)
 	layer.add_child(_toggle_btn)
+
+	# 右上角：刷新按钮（重置覆尘 + 旋转 4 周）。
+	_refresh_btn = Button.new()
+	_refresh_btn.flat = true
+	_refresh_btn.focus_mode = Control.FOCUS_NONE
+	_refresh_btn.anchor_left = 1.0
+	_refresh_btn.anchor_right = 1.0
+	_refresh_btn.pivot_offset = Vector2(72.0, 72.0)   # 绕中心旋转（144x144）
+	_refresh_btn.icon = load("res://textures/icon_refresh.png")
+	_refresh_btn.expand_icon = true
+	_refresh_btn.pressed.connect(_restart)
+	layer.add_child(_refresh_btn)
+
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
 
@@ -120,15 +137,22 @@ func _apply_safe_area() -> void:
 	var win := Vector2(DisplayServer.window_get_size())
 	var top := m
 	var left := m
+	var right := m
 	if win.x > 1.0 and win.y > 1.0:
 		var sc := Vector2(vis.x / win.x, vis.y / win.y)
 		var safe := DisplayServer.get_display_safe_area()
 		top = safe.position.y * sc.y + m
 		left = safe.position.x * sc.x + m
+		right = (win.x - (safe.position.x + safe.size.x)) * sc.x + m
 	_toggle_btn.offset_left = left
 	_toggle_btn.offset_right = left + btn
 	_toggle_btn.offset_top = top
 	_toggle_btn.offset_bottom = top + btn
+	if _refresh_btn != null:
+		_refresh_btn.offset_right = -right
+		_refresh_btn.offset_left = -right - btn
+		_refresh_btn.offset_top = top
+		_refresh_btn.offset_bottom = top + btn
 
 func _on_toggle() -> void:
 	_night = not _night
@@ -173,8 +197,9 @@ func _build_diamond() -> void:
 	_wash.resize(MAXW)
 	for i in MAXW:
 		_wash[i] = Vector4.ZERO
-	_mat.set_shader_parameter("wash_points", _wash)
+	_verts = _mesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 	_mesh.material_override = _mat
+	_seed_dust()                            # 初始：95% 有尘，随机 5% 已无尘
 
 	# 三角网碰撞体，供射线拾取冲刷点。
 	_mesh.create_trimesh_collision()
@@ -188,6 +213,41 @@ func _build_diamond() -> void:
 	core.omni_attenuation = 1.0
 	core.shadow_enabled = false
 	_world.add_child(core)
+
+# 重置为初始覆尘态：清空冲刷，随机撒若干“无尘”小点（约 5% 面积无尘）。
+func _seed_dust() -> void:
+	for i in MAXW:
+		_wash[i] = Vector4.ZERO
+	_count = 0
+	if _verts.is_empty():
+		_mat.set_shader_parameter("wash_points", _wash)
+		return
+	var n := 12
+	for i in n:
+		var v: Vector3 = _verts[randi() % _verts.size()]
+		_wash[_count] = Vector4(v.x, v.y, v.z, _wash_r * 0.7)
+		_count += 1
+	_mat.set_shader_parameter("wash_points", _wash)
+
+# 刷新：重置覆尘态并旋转 4 周。
+func _restart() -> void:
+	_seed_dust()
+	_spin4()
+
+# 让水晶旋转 4 整圈后回正；刷新按钮图标同步转 4 圈。
+func _spin4() -> void:
+	_spinning = true
+	_manual_rot = Vector3.ZERO
+	var axis := Vector3(0.2, 1.0, 0.1).normalized()
+	var tw := create_tween().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tw.tween_method(
+		func(a: float): _world.transform = Transform3D(Basis(axis, a), Vector3.ZERO),
+		0.0, TAU * 4.0, 1.9)
+	tw.tween_callback(func(): _spinning = false)
+	if _refresh_btn != null:
+		_refresh_btn.rotation = 0.0
+		create_tween().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT) \
+			.tween_property(_refresh_btn, "rotation", TAU * 4.0, 1.9)
 
 func _find_mesh(n: Node) -> MeshInstance3D:
 	if n is MeshInstance3D:
@@ -275,6 +335,8 @@ func _spray(screen_pos: Vector2) -> void:
 # ---------- 每帧 ----------
 
 func _process(delta: float) -> void:
+	if _spinning:
+		return                                # 旋转 4 周动画期间由 tween 接管
 	if _washing:
 		_spray(_wash_screen)
 		if not _sfx_water.playing:
