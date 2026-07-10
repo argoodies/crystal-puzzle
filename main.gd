@@ -255,7 +255,7 @@ func _restart() -> void:
 func _spin4() -> void:
 	_spinning = true
 	_manual_rot = Vector3.ZERO
-	var axis := Vector3(0.2, 1.0, 0.1).normalized()
+	var axis := Vector3(0.5, 1.0, 0.1).normalized()
 	var tw := create_tween().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 	tw.tween_method(
 		func(a: float): _world.transform = Transform3D(Basis(axis, a), Vector3.ZERO),
