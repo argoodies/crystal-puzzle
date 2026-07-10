@@ -23,6 +23,13 @@ var _mask_tex: ImageTexture
 var _refresh_btn: Button
 var _spinning := false                     # 旋转4周动画中，暂停常规旋转/冲刷
 
+const ST_REFRESH := 0                       # 右上角按钮状态：刷新
+const ST_CIRCLE := 1                        # 可交付：圆圈
+const ST_DELIVERED := 2                     # 已交付：对勾
+var _btn_state := ST_REFRESH
+var _delivered := false                     # 已交付：禁冲刷，只旋转
+var _cov_tick := 0                          # 覆盖率检测节流
+
 var _touches := {}
 var _pinch_dist := 0.0
 var _pinch_mid := Vector2.ZERO
@@ -33,6 +40,7 @@ var _washing := false
 var _wash_screen := Vector2.ZERO
 
 var _sfx_water: AudioStreamPlayer
+var _sfx_reward: AudioStreamPlayer
 var _dir: DirectionalLight3D
 var _spot: SpotLight3D
 var _env: Environment
@@ -58,6 +66,10 @@ func _build_audio() -> void:
 	_sfx_water.stream = load("res://sounds/water.wav")
 	_sfx_water.volume_db = 0.0
 	add_child(_sfx_water)
+	_sfx_reward = AudioStreamPlayer.new()
+	_sfx_reward.stream = load("res://sounds/reward.wav")
+	_sfx_reward.volume_db = 0.0
+	add_child(_sfx_reward)
 
 func _build_environment() -> void:
 	var we := WorldEnvironment.new()
@@ -126,7 +138,7 @@ func _build_toggle() -> void:
 	_refresh_btn.pivot_offset = Vector2(72.0, 72.0)   # 绕中心旋转（144x144）
 	_refresh_btn.icon = load("res://textures/icon_refresh.png")
 	_refresh_btn.expand_icon = true
-	_refresh_btn.pressed.connect(_restart)
+	_refresh_btn.pressed.connect(_on_topbtn)
 	layer.add_child(_refresh_btn)
 
 	_apply_safe_area()
@@ -246,10 +258,50 @@ func _paint(uv: Vector2, r: float, do_update: bool = true) -> void:
 	if do_update:
 		_mask_tex.update(_mask_img)
 
-# 刷新：重置覆尘态并旋转 4 周。
+# 右上角按钮：刷新 → 交付(圆圈→对勾) → 重新开始。
+func _on_topbtn() -> void:
+	match _btn_state:
+		ST_REFRESH:
+			_restart()
+		ST_CIRCLE:
+			_enter_delivered()
+		ST_DELIVERED:
+			_restart()
+
+# 冲刷达 99% → 进入“可交付”态：按钮变圆圈（仍可继续擦拭）。
+func _enter_circle() -> void:
+	_btn_state = ST_CIRCLE
+	_refresh_btn.icon = load("res://textures/icon_circle.png")
+
+# 点击圆圈 → 交付：变对勾、奖励音、禁冲刷（只能旋转）。
+func _enter_delivered() -> void:
+	_btn_state = ST_DELIVERED
+	_delivered = true
+	_refresh_btn.icon = load("res://textures/icon_check.png")
+	_washing = false
+	_sfx_water.stop()
+	_sfx_reward.play()
+
+# 刷新/重新开始：重置覆尘态并旋转 4 周。
 func _restart() -> void:
+	_btn_state = ST_REFRESH
+	_delivered = false
+	_refresh_btn.icon = load("res://textures/icon_refresh.png")
 	_seed_dust()
 	_spin4()
+
+# 冲刷进度检测：无尘顶点占比 ≥ 99% → 进入可交付态。
+func _check_coverage() -> void:
+	if _btn_state != ST_REFRESH or _uvs.is_empty():
+		return
+	var cleaned := 0
+	for i in _uvs.size():
+		var px := clampi(int(_uvs[i].x * MSZ), 0, MSZ - 1)
+		var py := clampi(int(_uvs[i].y * MSZ), 0, MSZ - 1)
+		if _mask_img.get_pixel(px, py).r > 0.5:
+			cleaned += 1
+	if float(cleaned) / float(_uvs.size()) >= 0.99:
+		_enter_circle()
 
 # 让水晶旋转 4 整圈后回正；刷新按钮图标同步转 4 圈。
 func _spin4() -> void:
@@ -345,6 +397,10 @@ func _process(delta: float) -> void:
 		_spray(_wash_screen)
 		if not _sfx_water.playing:
 			_sfx_water.play()
+		_cov_tick += 1
+		if _cov_tick >= 12:                        # 节流：约每 12 帧查一次覆盖率
+			_cov_tick = 0
+			_check_coverage()
 	var target := Vector3(_manual_rot.x, _manual_rot.y, 0.0)
 	var weight := 1.0 - pow(0.002, delta)
 	_world.rotation = _world.rotation.lerp(target, weight)
@@ -367,10 +423,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_touches.erase(event.index)
 		if _touches.size() == 1:
 			var pos: Vector2 = _touches.values()[0]
-			if _hit_model(pos):
+			if not _delivered and _hit_model(pos):
 				_set_washing(true, pos)         # 指到模型 → 冲刷
 			else:
-				_bg_rotating = true             # 指到背景 → 旋转画面
+				_bg_rotating = true             # 背景 / 已交付 → 只旋转画面
 		else:
 			_set_washing(false, Vector2.ZERO)
 			_bg_rotating = false
@@ -405,7 +461,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			if event.pressed: _zoom_by(1.0 / 0.9)
 		elif event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
-				if _hit_model(event.position):
+				if not _delivered and _hit_model(event.position):
 					_set_washing(true, event.position)   # 点到模型 → 冲刷
 				else:
 					_bg_rotating = true                  # 点到背景 → 旋转画面
