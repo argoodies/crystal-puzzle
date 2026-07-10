@@ -210,16 +210,6 @@ func _build_diamond() -> void:
 	# 三角网碰撞体，供射线拾取冲刷点。
 	_mesh.create_trimesh_collision()
 
-	# 直接放在原石模型内部的光源：从内部把钻石点亮，透出内芒。
-	var core := OmniLight3D.new()
-	core.position = Vector3.ZERO
-	core.light_color = Color(0.5, 0.75, 1.0)
-	core.light_energy = 3.5
-	core.omni_range = TARGET_W * 1.2
-	core.omni_attenuation = 1.0
-	core.shadow_enabled = false
-	_world.add_child(core)
-
 # 重置为初始覆尘态：清空冲刷，随机撒若干“无尘”小点（约 5% 面积无尘）。
 func _seed_dust() -> void:
 	for i in MAXW:
