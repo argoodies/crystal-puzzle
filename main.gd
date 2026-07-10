@@ -43,6 +43,8 @@ var _pinch_dist := 0.0
 
 var _manual_rot := Vector3.ZERO             # 拖拽累积的板子旋转（俯仰 x / 自转 y）
 var _rotating := false                       # 正在拖动板面/空白旋转板子
+var _press_screen := Vector2.ZERO            # 长按检测：按下位置
+var _press_moved := false                    # 按下后是否移动过（移动则算拖拽，不触发长按）
 var _intro := false                          # 开场翻转动画进行中（暂停常规旋转）
 var _intro_tween: Tween
 
@@ -524,11 +526,42 @@ func _try_pick(screen_pos: Vector2) -> void:
 	var hit := space.intersect_ray(q)
 	if not hit.is_empty() and hit.collider.has_meta("token"):
 		_dragging = hit.collider               # 点到令牌 → 拖令牌
+		_press_screen = screen_pos
+		_press_moved = false
 		_sfx_pick.play()
+		var tk := _dragging                    # 长按不移动 → 盖/揭死亡幡
+		get_tree().create_timer(0.45).timeout.connect(func(): _on_long_press(tk))
 	else:
 		_rotating = true                       # 点到木板或空白背景 → 旋转板子
 
+func _on_long_press(tk: StaticBody3D) -> void:
+	if _dragging == tk and not _press_moved and is_instance_valid(tk):
+		_toggle_shroud(tk)
+		Input.vibrate_handheld(40)             # 系统震动
+		_dragging = null                       # 长按后不再拖动/落下
+
+# 在令牌上叠加/移除死亡幡（billboard，始终朝相机、盖在最上层）。
+func _toggle_shroud(tk: Node3D) -> void:
+	if tk.has_meta("shroud"):
+		var old = tk.get_meta("shroud")
+		if is_instance_valid(old):
+			old.queue_free()
+		tk.remove_meta("shroud")
+		return
+	var tex: Texture2D = load("res://textures/shroud.png")
+	var sh := Sprite3D.new()
+	sh.texture = tex
+	sh.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	sh.no_depth_test = true
+	var r: float = tk.get_meta("radius")
+	sh.pixel_size = (r * 2.4) / float(tex.get_width())
+	sh.position = Vector3(0.0, 0.03, 0.0)
+	tk.add_child(sh)
+	tk.set_meta("shroud", sh)
+
 func _drag_to(screen_pos: Vector2) -> void:
+	if screen_pos.distance_to(_press_screen) > 14.0:
+		_press_moved = true                    # 移动了 → 取消长按
 	var from := _camera.project_ray_origin(screen_pos)
 	var dir := _camera.project_ray_normal(screen_pos)
 	var py: float = _dragging.get_meta("plane_y")
