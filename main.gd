@@ -97,7 +97,7 @@ func _play_intro() -> void:
 	# 刷新按钮同步绕中心转 4 圈（同参数、同时长）。
 	if _refresh_btn != null:
 		_refresh_btn.rotation = 0.0
-		_intro_tween.parallel().tween_property(_refresh_btn, "rotation", -TAU * 4.0, 1.9)
+		_intro_tween.parallel().tween_property(_refresh_btn, "rotation", TAU * 4.0, 1.9)
 	_intro_tween.chain().tween_callback(_end_intro)
 
 func _end_intro() -> void:
