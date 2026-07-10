@@ -23,6 +23,7 @@ var _pinch_dist := 0.0
 var _pinch_mid := Vector2.ZERO
 var _manual_rot := Vector3.ZERO
 var _rotating := false
+var _bg_rotating := false                 # 单指/拖背景旋转画面
 var _washing := false
 var _wash_screen := Vector2.ZERO
 
@@ -56,7 +57,7 @@ func _build_environment() -> void:
 	var we := WorldEnvironment.new()
 	_env = Environment.new()
 	_env.background_mode = Environment.BG_COLOR
-	_env.background_color = Color(0.05, 0.03, 0.09)
+	_env.background_color = Color(0, 0, 0)
 	_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	_env.ambient_light_color = Color(0.42, 0.36, 0.52)
 	_env.ambient_light_energy = 0.6
@@ -136,7 +137,7 @@ func _on_toggle() -> void:
 func _apply_lighting(animate: bool) -> void:
 	var dir_c := Color(0.62, 0.74, 1.0) if _night else Color(1.0, 0.94, 0.85)
 	var spot_c := Color(0.5, 0.68, 1.0) if _night else Color(1.0, 0.9, 0.72)
-	var bg_c := Color(0.02, 0.03, 0.09) if _night else Color(0.05, 0.03, 0.09)
+	var bg_c := Color(0, 0, 0)                 # 背景始终纯黑
 	var amb_c := Color(0.30, 0.40, 0.60) if _night else Color(0.42, 0.36, 0.52)
 	_toggle_btn.text = "🌙" if _night else "☀️"
 	if animate:
@@ -177,6 +178,16 @@ func _build_diamond() -> void:
 
 	# 三角网碰撞体，供射线拾取冲刷点。
 	_mesh.create_trimesh_collision()
+
+	# 直接放在原石模型内部的光源：从内部把钻石点亮，透出内芒。
+	var core := OmniLight3D.new()
+	core.position = Vector3.ZERO
+	core.light_color = Color(0.5, 0.75, 1.0)
+	core.light_energy = 3.5
+	core.omni_range = TARGET_W * 1.2
+	core.omni_attenuation = 1.0
+	core.shadow_enabled = false
+	_world.add_child(core)
 
 func _find_mesh(n: Node) -> MeshInstance3D:
 	if n is MeshInstance3D:
@@ -222,6 +233,13 @@ void fragment() {
 	return sh
 
 # ---------- 冲刷 ----------
+
+func _hit_model(screen_pos: Vector2) -> bool:
+	var wo := _camera.project_ray_origin(screen_pos)
+	var wd := _camera.project_ray_normal(screen_pos)
+	var space := get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(wo, wo + wd * 100.0)
+	return not space.intersect_ray(q).is_empty()
 
 func _spray(screen_pos: Vector2) -> void:
 	var wo := _camera.project_ray_origin(screen_pos)
@@ -278,9 +296,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			_touches.erase(event.index)
 		if _touches.size() == 1:
-			_set_washing(true, _touches.values()[0])
+			var pos: Vector2 = _touches.values()[0]
+			if _hit_model(pos):
+				_set_washing(true, pos)         # 指到模型 → 冲刷
+			else:
+				_bg_rotating = true             # 指到背景 → 旋转画面
 		else:
 			_set_washing(false, Vector2.ZERO)
+			_bg_rotating = false
 			if _touches.size() == 2:
 				_pinch_dist = _two_touch_dist()
 				_pinch_mid = _two_touch_mid()
@@ -289,7 +312,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _touches.has(event.index):
 			_touches[event.index] = event.position
 		if _touches.size() == 1:
-			_wash_screen = event.position
+			if _washing:
+				_wash_screen = event.position
+			elif _bg_rotating:
+				_rotate_by(event.relative)
 		elif _touches.size() == 2:
 			var d := _two_touch_dist()
 			if _pinch_dist > 1.0 and d > 1.0:
@@ -308,13 +334,20 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			if event.pressed: _zoom_by(1.0 / 0.9)
 		elif event.button_index == MOUSE_BUTTON_LEFT:
-			_set_washing(event.pressed, event.position)
+			if event.pressed:
+				if _hit_model(event.position):
+					_set_washing(true, event.position)   # 点到模型 → 冲刷
+				else:
+					_bg_rotating = true                  # 点到背景 → 旋转画面
+			else:
+				_set_washing(false, Vector2.ZERO)
+				_bg_rotating = false
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			_rotating = event.pressed
 	elif event is InputEventMouseMotion:
 		if _washing:
 			_wash_screen = event.position
-		elif _rotating:
+		elif _bg_rotating or _rotating:
 			_rotate_by(event.relative)
 
 func _rotate_by(delta: Vector2) -> void:
