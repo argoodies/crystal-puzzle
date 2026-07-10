@@ -51,11 +51,6 @@ var _press_moved := false                    # 按下后是否移动过（移动
 var _intro := false                          # 开场翻转动画进行中（暂停常规旋转）
 var _intro_tween: Tween
 
-var _closeup := false                         # 单击令牌进入的俯视特写模式
-var _cam_saved := Transform3D.IDENTITY
-var _rot_saved := Vector3.ZERO                # 进入特写前的板子旋转/手动旋转
-var _cam_tween: Tween
-var _closeup_label: Label3D                   # 技能介绍（billboard，挂在令牌上）
 
 var _font: FontFile
 var _sfx_pick: AudioStreamPlayer
@@ -82,36 +77,6 @@ func _ready() -> void:
 	_spawn_tokens()
 	_build_toggle()
 	_play_intro()
-
-# 单击令牌 → 令牌上弹出技能介绍（billboard，与角色名同字体同字号，不动相机/板子）。
-func _enter_closeup(tk: Node3D) -> void:
-	if not tk.has_meta("cname"):
-		return                                 # 只有角色令牌能（纽扣不行）
-	_closeup = true
-	_sfx_pick.play()
-	var lbl := Label3D.new()
-	lbl.text = tk.get_meta("cdesc")
-	lbl.font = _font
-	lbl.font_size = 52                          # 与令牌上角色名同字号
-	lbl.pixel_size = 0.0016
-	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	lbl.modulate = Color(1, 1, 1)
-	lbl.outline_size = 14
-	lbl.outline_modulate = Color(0, 0, 0, 0.8)
-	lbl.no_depth_test = true
-	lbl.width = 820.0                           # 自动换行宽度
-	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	lbl.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-	lbl.position = Vector3(0.0, 0.13, 0.02)     # 令牌上方附近
-	tk.add_child(lbl)
-	_closeup_label = lbl
-
-func _exit_closeup() -> void:
-	_closeup = false
-	if is_instance_valid(_closeup_label):
-		_closeup_label.queue_free()
-	_closeup_label = null
-	_sfx_drop.play()
 
 # 开场：板子快速上下翻转 4 周后停下。
 func _play_intro() -> void:
@@ -493,11 +458,6 @@ func _separate() -> void:
 
 ## 交互：按下→命中令牌抓起（响“嗒”）；拖动→贴板面平移（滑动“哒”）；松开→放下（“咚”）。
 func _unhandled_input(event: InputEvent) -> void:
-	# 特写模式：任意触碰返回，忽略其它交互。
-	if _closeup:
-		if (event is InputEventMouseButton or event is InputEventScreenTouch) and event.pressed:
-			_exit_closeup()
-		return
 	# --- 缩放：双指捏合 / 触控板 / 鼠标滚轮 ---
 	if event is InputEventScreenTouch:
 		if event.pressed:
@@ -542,12 +502,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_try_pick(event.position)
 		else:
 			if _dragging != null:
-				if _press_moved:
-					# 拖动后松手：随机歪斜 ±15°。
-					_dragging.rotation = Vector3(0.0, randf_range(-deg_to_rad(15.0), deg_to_rad(15.0)), 0.0)
-					_sfx_drop.play()
-				else:
-					_enter_closeup(_dragging)   # 单击(未移动) → 俯视特写
+				# 松手瞬间随机歪斜 ±15°。
+				_dragging.rotation = Vector3(0.0, randf_range(-deg_to_rad(15.0), deg_to_rad(15.0)), 0.0)
+				_sfx_drop.play()
 			_dragging = null
 			_rotating = false
 	elif event is InputEventMouseMotion or event is InputEventScreenDrag:
