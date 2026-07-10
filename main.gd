@@ -53,6 +53,7 @@ var _intro_tween: Tween
 
 var _closeup := false                         # 单击令牌进入的俯视特写模式
 var _cam_saved := Transform3D.IDENTITY
+var _rot_saved := Vector3.ZERO                # 进入特写前的板子旋转/手动旋转
 var _cam_tween: Tween
 var _closeup_layer: CanvasLayer
 var _closeup_name: Label
@@ -85,85 +86,68 @@ func _ready() -> void:
 	_build_closeup_ui()
 	_play_intro()
 
-# 底部技能介绍面板（特写模式显示）。
+# 技能介绍文字（无背景、描边、放在令牌下方附近）。
 func _build_closeup_ui() -> void:
 	_closeup_layer = CanvasLayer.new()
 	_closeup_layer.layer = 2                   # 在按钮(1)之上
 	add_child(_closeup_layer)
-	var panel := Panel.new()
-	panel.anchor_left = 0.0
-	panel.anchor_right = 1.0
-	panel.anchor_top = 1.0
-	panel.anchor_bottom = 1.0
-	panel.offset_top = -340.0
-	panel.offset_bottom = -32.0
-	panel.offset_left = 20.0
-	panel.offset_right = -20.0
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE   # 点面板也能退出
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.06, 0.04, 0.11, 0.94)
-	sb.set_corner_radius_all(18)
-	sb.border_color = Color(1, 1, 1, 0.12)
-	sb.set_border_width_all(1)
-	panel.add_theme_stylebox_override("panel", sb)
-	_closeup_layer.add_child(panel)
 	var vb := VBoxContainer.new()
-	vb.set_anchors_preset(Control.PRESET_FULL_RECT)
-	vb.offset_left = 30.0
-	vb.offset_right = -30.0
-	vb.offset_top = 26.0
-	vb.offset_bottom = -26.0
-	vb.add_theme_constant_override("separation", 16)
+	vb.anchor_left = 0.06
+	vb.anchor_right = 0.94
+	vb.anchor_top = 0.55                        # 令牌下方附近起
+	vb.anchor_bottom = 1.0
+	vb.offset_bottom = -40.0
+	vb.add_theme_constant_override("separation", 14)
 	vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(vb)
-	_closeup_name = Label.new()
-	_closeup_name.add_theme_font_override("font", _font)
-	_closeup_name.add_theme_font_size_override("font_size", 44)
-	_closeup_name.add_theme_color_override("font_color", Color(0.96, 0.90, 1.0))
-	_closeup_name.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_closeup_layer.add_child(vb)
+	_closeup_name = _make_closeup_label(48, Color(0.98, 0.94, 1.0), 9)
 	vb.add_child(_closeup_name)
-	_closeup_desc = Label.new()
-	_closeup_desc.add_theme_font_override("font", _font)
-	_closeup_desc.add_theme_font_size_override("font_size", 27)
-	_closeup_desc.add_theme_color_override("font_color", Color(0.84, 0.80, 0.90))
+	_closeup_desc = _make_closeup_label(28, Color(0.92, 0.89, 0.98), 7)
 	_closeup_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_closeup_desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vb.add_child(_closeup_desc)
-	var hint := Label.new()
-	hint.add_theme_font_override("font", _font)
-	hint.add_theme_font_size_override("font_size", 20)
-	hint.add_theme_color_override("font_color", Color(0.6, 0.55, 0.7))
-	hint.text = "触碰屏幕返回"
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vb.add_child(hint)
 	_closeup_layer.visible = false
 
-# 单击令牌 → 俯视特写 + 底部技能介绍。
+func _make_closeup_label(fsize: int, col: Color, outline: int) -> Label:
+	var l := Label.new()
+	l.add_theme_font_override("font", _font)   # 与角色名同一字体
+	l.add_theme_font_size_override("font_size", fsize)
+	l.add_theme_color_override("font_color", col)
+	l.add_theme_constant_override("outline_size", outline)   # 描边替代背景
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.92))
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
+
+# 单击令牌 → 木板转平正对相机 + 俯视特写 + 令牌旁技能介绍。
 func _enter_closeup(tk: Node3D) -> void:
 	if not tk.has_meta("cname"):
 		return                                 # 只有角色令牌能特写（纽扣不行）
 	_closeup = true
 	_cam_saved = _camera.transform
-	var tpos: Vector3 = tk.global_position
-	var cam_pos := tpos + Vector3(0.0, 1.05, 0.42)   # 近距离俯视
-	var target := Transform3D(Basis(), cam_pos).looking_at(tpos, Vector3.UP)
+	_rot_saved = _table.rotation
+	# 木板转到正对相机：正面令牌用水平(0)，背面令牌翻 180°，使该令牌面朝上。
+	var plane_y: float = tk.get_meta("plane_y")
+	var target_rot := Vector3.ZERO if plane_y > 0.0 else Vector3(PI, 0.0, 0.0)
+	var wpos: Vector3 = Basis.from_euler(target_rot) * tk.position   # 转平后令牌世界位置
+	var cam_pos := wpos + Vector3(0.0, 0.92, 0.20)                   # 近距、近俯视
+	var cam_xf := Transform3D(Basis(), cam_pos).looking_at(wpos, Vector3.BACK)
 	if _cam_tween != null and _cam_tween.is_valid():
 		_cam_tween.kill()
-	_cam_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	_cam_tween.tween_property(_camera, "transform", target, 0.45)
+	_cam_tween = create_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_cam_tween.tween_property(_table, "rotation", target_rot, 0.5)   # 木板转平
+	_cam_tween.tween_property(_camera, "transform", cam_xf, 0.5)
 	_closeup_name.text = tk.get_meta("cname")
 	_closeup_desc.text = tk.get_meta("cdesc")
 	_closeup_layer.visible = true
 	_sfx_pick.play()
 
 func _exit_closeup() -> void:
-	_closeup = false
+	_closeup = false                           # _process 恢复：把板子 lerp 回原旋转
 	_closeup_layer.visible = false
 	if _cam_tween != null and _cam_tween.is_valid():
 		_cam_tween.kill()
 	_cam_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	_cam_tween.tween_property(_camera, "transform", _cam_saved, 0.4)
+	_cam_tween.tween_property(_camera, "transform", _cam_saved, 0.45)
 	_sfx_drop.play()
 
 # 开场：板子快速上下翻转 4 周后停下。
