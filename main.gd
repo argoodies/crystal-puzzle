@@ -220,27 +220,6 @@ func _build_diamond() -> void:
 	core.shadow_enabled = false
 	_world.add_child(core)
 
-	# 内部光源周围的可反射杂质：金属小颗粒，被内光照亮而闪烁，透过冲刷处可见。
-	var imat := StandardMaterial3D.new()
-	imat.albedo_color = Color(0.85, 0.9, 1.0)
-	imat.metallic = 1.0                        # 强反光
-	imat.roughness = 0.12
-	imat.emission_enabled = true
-	imat.emission = Color(0.4, 0.6, 1.0)
-	imat.emission_energy_multiplier = 0.4
-	for i in 14:
-		var spk := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		var s := randf_range(0.012, 0.03) * TARGET_W
-		bm.size = Vector3(s, s, s)
-		spk.mesh = bm
-		spk.material_override = imat
-		spk.rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
-		# 分布在内光源附近的小球范围内（水晶内部）。
-		var dir := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)).normalized()
-		spk.position = dir * randf_range(0.0, TARGET_W * 0.18)
-		_world.add_child(spk)
-
 # 重置为初始覆尘态：清空冲刷，随机撒若干“无尘”小点（约 5% 面积无尘）。
 func _seed_dust() -> void:
 	for i in MAXW:
@@ -322,11 +301,19 @@ void fragment() {
 	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
 	float crystal_alpha = mix(0.22, 0.85, fres);
 	ALBEDO = mix(powder_color, diamond_color, reveal);
-	ROUGHNESS = mix(1.0, 0.0, reveal);         // 灰尘纯漫反射 → 水晶镜面光滑
-	METALLIC = mix(0.0, 0.5, reveal);          // 水晶更反光
+	ROUGHNESS = mix(1.0, 0.02, reveal);        // 灰尘纯漫反射 → 水晶镜面光滑
+	METALLIC = mix(0.0, 0.3, reveal);
 	SPECULAR = mix(0.0, 1.0, reveal);          // 灰尘无镜面 → 水晶强镜面
-	EMISSION = diamond_color * (0.4 * reveal);  // 露出处微辉，配内部光/泛光
-	ALPHA = mix(1.0, crystal_alpha, reveal);    // 白粉不透明 → 冲刷露出后透明
+	// 程序化环境强反光：按反射方向生成“影棚”亮斑，随视角移动，纯黑背景下也能强反光。
+	vec3 fn2 = normalize(NORMAL);                                        // 视图空间法线
+	vec3 rd = reflect(-normalize(VIEW), fn2);
+	vec3 rw = (INV_VIEW_MATRIX * vec4(rd, 0.0)).xyz;
+	float env = smoothstep(0.15, 1.0, rw.y) * 0.5;                       // 顶部大面光
+	env += pow(max(dot(rw, normalize(vec3(0.8, 0.7, 0.4))), 0.0), 50.0); // 亮斑 1
+	env += pow(max(dot(rw, normalize(vec3(-0.7, 0.5, 0.6))), 0.0), 70.0);// 亮斑 2
+	float fres2 = pow(1.0 - clamp(dot(fn2, normalize(VIEW)), 0.0, 1.0), 4.0);
+	EMISSION = diamond_color * (0.25 * reveal) + diamond_color * env * (0.7 + 1.4 * fres2) * reveal;
+	ALPHA = mix(1.0, crystal_alpha, reveal);    // 灰尘不透明 → 冲刷露出后透明
 }
 """
 	return sh
