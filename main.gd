@@ -185,11 +185,20 @@ func _build_gem() -> void:
 	var box := BoxMesh.new()
 	box.size = Vector3(CELL, CELL, THICK)
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = GEM
-	mat.metallic = 0.35
-	mat.roughness = 0.12                     # 光亮宝石
+	mat.albedo_color = Color(GEM.r, GEM.g, GEM.b, 0.5)       # 半透明蓝宝石
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS   # 写深度：上千半透体素不糊成一团
+	mat.metallic = 0.25
+	mat.roughness = 0.06                                     # 高光亮，宝石光泽
+	mat.metallic_specular = 0.9
 	mat.rim_enabled = true
-	mat.rim = 0.6
+	mat.rim = 0.75                                           # 边缘辉光
+	mat.rim_tint = 0.3
+	mat.refraction_enabled = true                           # 折射（Compatibility 支持时生效，折射背景光）
+	mat.refraction_scale = 0.07
+	mat.emission_enabled = true                             # 内部微辉，透出“光芒”
+	mat.emission = Color(0.06, 0.20, 0.45)
+	mat.emission_energy_multiplier = 0.4
 	box.material = mat
 
 	_mm = MultiMesh.new()
