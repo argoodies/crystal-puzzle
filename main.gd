@@ -8,18 +8,18 @@ const TARGET_W := 1.8                    # 模型最长边世界尺寸
 const ROT_SENS := 0.006
 const MIN_ZOOM := 2.0
 const MAX_ZOOM := 8.0
-const MAXW := 80                         # 冲刷点上限（与 shader 数组一致）
+const MSZ := 512                         # 冲刷遮罩纹理尺寸
+const WASH_UV_R := 0.035                  # 冲刷笔刷半径（UV 空间）
+const SEED_UV_R := 0.02                   # 初始无尘点半径（UV 空间）
 
 var _camera: Camera3D
 var _world: Node3D
 var _mesh: MeshInstance3D
 var _mat: ShaderMaterial
-var _wash: Array[Vector4] = []            # 冲刷点：xyz=局部位置, w=半径
-var _washn: Array[Vector4] = []           # 冲刷点命中面的局部法线（只冲这一面）
-var _count := 0
-var _wash_r := 0.1                        # 冲刷笔刷半径（模型局部单位）
-var _verts: PackedVector3Array            # 模型顶点（局部空间），用于随机撒“无尘点”
-var _norms: PackedVector3Array            # 对应顶点法线
+var _verts: PackedVector3Array            # 模型顶点（局部空间）
+var _uvs: PackedVector2Array              # 对应 UV，用于把冲刷画进遮罩
+var _mask_img: Image                      # 冲刷遮罩：0=覆尘, 1=已冲刷露出
+var _mask_tex: ImageTexture
 var _refresh_btn: Button
 var _spinning := false                     # 旋转4周动画中，暂停常规旋转/冲刷
 
@@ -188,7 +188,6 @@ func _build_diamond() -> void:
 	var ab := _mesh.get_aabb()
 	var ext: float = maxf(ab.size.x, maxf(ab.size.y, ab.size.z))
 	var sc := TARGET_W / ext
-	_wash_r = ext * 0.09                    # 笔刷半径（局部单位）
 	scene.scale = Vector3(sc, sc, sc)
 	scene.position = Vector3.ZERO
 	scene.position = -(_mesh.global_transform * ab.get_center())
@@ -196,14 +195,13 @@ func _build_diamond() -> void:
 	# 冲刷遮罩 shader：默认白粉，冲刷点附近露出蓝钻。
 	_mat = ShaderMaterial.new()
 	_mat.shader = _make_shader()
-	_wash.resize(MAXW)
-	_washn.resize(MAXW)
-	for i in MAXW:
-		_wash[i] = Vector4.ZERO
-		_washn[i] = Vector4.ZERO
 	var arrays := _mesh.mesh.surface_get_arrays(0)
 	_verts = arrays[Mesh.ARRAY_VERTEX]
-	_norms = arrays[Mesh.ARRAY_NORMAL]
+	_uvs = arrays[Mesh.ARRAY_TEX_UV]
+	# 冲刷遮罩纹理：随模型 UV，覆盖无上限。
+	_mask_img = Image.create(MSZ, MSZ, false, Image.FORMAT_L8)
+	_mask_tex = ImageTexture.create_from_image(_mask_img)
+	_mat.set_shader_parameter("wash_mask", _mask_tex)
 	_mesh.material_override = _mat
 	_seed_dust()                            # 初始：95% 有尘，随机 5% 已无尘
 
@@ -212,21 +210,32 @@ func _build_diamond() -> void:
 
 # 重置为初始覆尘态：清空冲刷，随机撒若干“无尘”小点（约 5% 面积无尘）。
 func _seed_dust() -> void:
-	for i in MAXW:
-		_wash[i] = Vector4.ZERO
-		_washn[i] = Vector4.ZERO
-	_count = 0
-	if not _verts.is_empty():
-		var n := 12
-		for i in n:
-			var k := randi() % _verts.size()
-			var v: Vector3 = _verts[k]
-			var nn: Vector3 = _norms[k] if k < _norms.size() else Vector3.UP
-			_wash[_count] = Vector4(v.x, v.y, v.z, _wash_r * 0.7)
-			_washn[_count] = Vector4(nn.x, nn.y, nn.z, 0.0)
-			_count += 1
-	_mat.set_shader_parameter("wash_points", _wash)
-	_mat.set_shader_parameter("wash_normals", _washn)
+	_mask_img.fill(Color(0, 0, 0))          # 全部覆尘
+	if not _uvs.is_empty():
+		for i in 12:                        # 随机撒约 5% 无尘点
+			var k := randi() % _uvs.size()
+			_paint(_uvs[k], SEED_UV_R, false)
+	_mask_tex.update(_mask_img)
+
+# 把一笔冲刷画进遮罩：以 uv 为中心的软圆，取最大值累积。
+func _paint(uv: Vector2, r: float, do_update: bool = true) -> void:
+	var cx := uv.x * float(MSZ)
+	var cy := uv.y * float(MSZ)
+	var rp := r * float(MSZ)
+	var x0 := int(maxf(0.0, floor(cx - rp)))
+	var x1 := int(minf(MSZ - 1, ceil(cx + rp)))
+	var y0 := int(maxf(0.0, floor(cy - rp)))
+	var y1 := int(minf(MSZ - 1, ceil(cy + rp)))
+	for y in range(y0, y1 + 1):
+		for x in range(x0, x1 + 1):
+			var d := Vector2(x - cx, y - cy).length()
+			if d > rp:
+				continue
+			var v := 1.0 - smoothstep(rp * 0.4, rp, d)
+			if v > _mask_img.get_pixel(x, y).r:
+				_mask_img.set_pixel(x, y, Color(v, v, v))
+	if do_update:
+		_mask_tex.update(_mask_img)
 
 # 刷新：重置覆尘态并旋转 4 周。
 func _restart() -> void:
@@ -263,30 +272,12 @@ func _make_shader() -> Shader:
 shader_type spatial;
 render_mode blend_mix, cull_disabled, specular_schlick_ggx;
 
-uniform vec4 wash_points[80];
-uniform vec4 wash_normals[80];
+uniform sampler2D wash_mask : filter_linear;
 uniform vec3 powder_color : source_color = vec3(0.52, 0.52, 0.54);
 uniform vec3 diamond_color : source_color = vec3(0.12, 0.42, 0.92);
 
-varying vec3 v_local;
-varying vec3 v_norm;
-
-void vertex() {
-	v_local = VERTEX;
-	v_norm = NORMAL;
-}
-
 void fragment() {
-	vec3 fn = normalize(v_norm);
-	float reveal = 0.0;
-	for (int i = 0; i < 80; i++) {
-		float r = wash_points[i].w;
-		// 只冲刷命中的那一面：片元法线需与冲刷点命中面法线同向。
-		if (r > 0.0 && dot(fn, wash_normals[i].xyz) > 0.15) {
-			float d = distance(v_local, wash_points[i].xyz);
-			reveal = max(reveal, 1.0 - smoothstep(r * 0.6, r, d));
-		}
-	}
+	float reveal = texture(wash_mask, UV).r;   // 冲刷遮罩：0=覆尘, 1=露出水晶
 	// 菲涅尔：边缘更实、正对更透，像水晶。
 	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
 	float crystal_alpha = mix(0.22, 0.85, fres);
@@ -325,10 +316,8 @@ func _spray(screen_pos: Vector2) -> void:
 	var hit := space.intersect_ray(q)
 	if hit.is_empty():
 		return
-	var inv := _mesh.global_transform.affine_inverse()
-	var local: Vector3 = inv * (hit.position as Vector3)
-	# 命中面法线取“最近顶点的着色法线”，与 shader 里的 fn 同源；
-	# 这样即便某些面法线被建模翻反了，也能一致匹配、正常清除。
+	# 命中处最近顶点的 UV → 在遮罩上冲刷（UV 分岛天然只作用命中的那一面）。
+	var local: Vector3 = _mesh.global_transform.affine_inverse() * (hit.position as Vector3)
 	var bi := 0
 	var bd := INF
 	for vi in _verts.size():
@@ -336,28 +325,7 @@ func _spray(screen_pos: Vector2) -> void:
 		if dd < bd:
 			bd = dd
 			bi = vi
-	var lnorm: Vector3 = _norms[bi].normalized()
-	# 找最近的、同一面（法线相近）的已存在冲刷点：够近则扩大，否则新增。
-	var best := -1
-	var bestd := INF
-	for i in _count:
-		if Vector3(_washn[i].x, _washn[i].y, _washn[i].z).dot(lnorm) < 0.3:
-			continue                          # 不同面，不合并
-		var d := local.distance_to(Vector3(_wash[i].x, _wash[i].y, _wash[i].z))
-		if d < bestd:
-			bestd = d
-			best = i
-	var grow := _wash_r * 0.35
-	if best >= 0 and bestd < _wash_r * 0.7 and _wash[best].w < _wash_r * 2.4:
-		_wash[best] = Vector4(_wash[best].x, _wash[best].y, _wash[best].z, _wash[best].w + grow)
-	elif _count < MAXW:
-		_wash[_count] = Vector4(local.x, local.y, local.z, _wash_r)
-		_washn[_count] = Vector4(lnorm.x, lnorm.y, lnorm.z, 0.0)
-		_count += 1
-	elif best >= 0:
-		_wash[best] = Vector4(_wash[best].x, _wash[best].y, _wash[best].z, minf(_wash[best].w + grow, _wash_r * 2.4))
-	_mat.set_shader_parameter("wash_points", _wash)
-	_mat.set_shader_parameter("wash_normals", _washn)
+	_paint(_uvs[bi], WASH_UV_R)
 
 # ---------- 每帧 ----------
 
