@@ -166,7 +166,7 @@ func _build_toggle() -> void:
 	_toggle_btn.offset_bottom = 224.0
 	var emoji_font := load("res://fonts/NotoEmoji-toggle.ttf")
 	_toggle_btn.add_theme_font_override("font", emoji_font)
-	_toggle_btn.add_theme_font_size_override("font_size", 84)
+	_toggle_btn.add_theme_font_size_override("font_size", 108)
 	_toggle_btn.text = "☀️"
 	_toggle_btn.pressed.connect(_on_toggle)
 	layer.add_child(_toggle_btn)
