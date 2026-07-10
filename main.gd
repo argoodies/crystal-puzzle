@@ -41,6 +41,7 @@ var _wash_screen := Vector2.ZERO
 
 var _sfx_water: AudioStreamPlayer
 var _sfx_reward: AudioStreamPlayer
+var _sfx_ding: AudioStreamPlayer
 var _dir: DirectionalLight3D
 var _spot: SpotLight3D
 var _env: Environment
@@ -70,6 +71,10 @@ func _build_audio() -> void:
 	_sfx_reward.stream = load("res://sounds/reward.wav")
 	_sfx_reward.volume_db = 0.0
 	add_child(_sfx_reward)
+	_sfx_ding = AudioStreamPlayer.new()
+	_sfx_ding.stream = load("res://sounds/ding.wav")
+	_sfx_ding.volume_db = 0.0
+	add_child(_sfx_ding)
 
 func _build_environment() -> void:
 	var we := WorldEnvironment.new()
@@ -272,6 +277,7 @@ func _on_topbtn() -> void:
 func _enter_circle() -> void:
 	_btn_state = ST_CIRCLE
 	_refresh_btn.icon = load("res://textures/icon_circle.png")
+	_sfx_ding.play()                        # 首次达 99% → 短“叮”提示可完成
 
 # 点击圆圈 → 交付：变对勾、奖励音、禁冲刷（只能旋转）。
 func _enter_delivered() -> void:
