@@ -464,9 +464,7 @@ void fragment() {
 		col += s * b * illum * weight;
 		illum *= decayf;
 	}
-	// 中心淡出：光心处不叠成亮球，只保留向外发散的光柱。
-	float center_fade = smoothstep(0.0, 0.12, distance(SCREEN_UV, light_uv));
-	COLOR = vec4(col * exposure * center_fade, 1.0);
+	COLOR = vec4(col * exposure, 1.0);
 }
 """
 	_godray_mat.shader = sh
@@ -499,7 +497,7 @@ func _build_spray_fx() -> void:
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.albedo_texture = load("res://textures/droplet.png")   # 圆形水珠贴图
-	mat.albedo_color = Color(0.6, 0.72, 0.9, 0.8)      # 恢复的亮水色（反光）
+	mat.albedo_color = Color(0.52, 0.62, 0.72, 0.85)   # 蓝水色，屏幕亮度低于神光阈值(0.72)，不结成亮球
 	qm.material = mat
 	p.mesh = qm
 	add_child(p)
