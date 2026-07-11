@@ -323,7 +323,7 @@ func _build_model(path: String) -> void:
 	_core_light = OmniLight3D.new()
 	_core_light.position = Vector3.ZERO
 	_core_light.light_color = Color(0.5, 0.75, 1.0)
-	_core_light.light_energy = 2.6
+	_core_light.light_energy = 1.8
 	_core_light.omni_range = TARGET_W * 1.2
 	_core_light.shadow_enabled = false
 	_world.add_child(_core_light)
