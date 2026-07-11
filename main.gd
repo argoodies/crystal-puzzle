@@ -331,14 +331,47 @@ func _build_model(path: String) -> void:
 	_core_light.shadow_enabled = false
 	_world.add_child(_core_light)
 
-# 重置为初始覆尘态：清空冲刷，随机撒若干“无尘”小点（约 5% 面积无尘）。
+# 重置为初始覆尘态：清空后用几笔“隐藏随机擦拭”把无尘面积做到约 20%（像真擦过，而非撒点）。
 func _seed_dust() -> void:
 	_mask_img.fill(Color(0, 0, 0))          # 全部覆尘
-	if not _uvs.is_empty():
-		for i in 50:                        # 随机撒约 20% 无尘点（初始 80% 覆灰）
-			var k := randi() % _uvs.size()
-			_paint(_uvs[k], SEED_UV_R, false)
+	if not _verts.is_empty():
+		var guard := 0
+		while _coverage() < 0.20 and guard < 30:
+			_wipe_stroke()
+			guard += 1
 	_mask_tex.update(_mask_img)
+
+# 一笔连贯的随机擦拭：从随机顶点出发，沿表面朝一个逐渐转向的方向走，沿途盖笔刷。
+func _wipe_stroke() -> void:
+	var idx := randi() % _verts.size()
+	var dir := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)).normalized()
+	var stride: float = _mesh.get_aabb().size.length() * 0.02
+	for step in 24:
+		_paint(_uvs[idx], WASH_UV_R, false)
+		var target: Vector3 = _verts[idx] + dir * stride
+		var best := idx
+		var bd := INF
+		for vi in _verts.size():
+			var d := _verts[vi].distance_squared_to(target)
+			if d < bd:
+				bd = d
+				best = vi
+		if best == idx:
+			break                            # 走不动了（停在原地）
+		dir = ((_verts[best] - _verts[idx]).normalized() * 0.7 + dir * 0.3).normalized()
+		idx = best
+
+# 无尘顶点占比（0~1）。
+func _coverage() -> float:
+	if _uvs.is_empty():
+		return 1.0
+	var cleaned := 0
+	for i in _uvs.size():
+		var px := clampi(int(_uvs[i].x * MSZ), 0, MSZ - 1)
+		var py := clampi(int(_uvs[i].y * MSZ), 0, MSZ - 1)
+		if _mask_img.get_pixel(px, py).r > 0.5:
+			cleaned += 1
+	return float(cleaned) / float(_uvs.size())
 
 # 把一笔冲刷画进遮罩：以 uv 为中心的软圆，取最大值累积。
 func _paint(uv: Vector2, r: float, do_update: bool = true) -> void:
@@ -404,13 +437,7 @@ func _restart() -> void:
 func _check_coverage() -> void:
 	if _btn_state != ST_REFRESH or _uvs.is_empty():
 		return
-	var cleaned := 0
-	for i in _uvs.size():
-		var px := clampi(int(_uvs[i].x * MSZ), 0, MSZ - 1)
-		var py := clampi(int(_uvs[i].y * MSZ), 0, MSZ - 1)
-		if _mask_img.get_pixel(px, py).r > 0.5:
-			cleaned += 1
-	if float(cleaned) / float(_uvs.size()) >= 0.999:
+	if _coverage() >= 0.999:
 		_enter_circle()
 
 # 让水晶旋转 4 整圈后回正；刷新按钮图标同步转 4 圈。
