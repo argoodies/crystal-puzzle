@@ -287,14 +287,18 @@ func _build_model(path: String) -> void:
 	scene.position = Vector3.ZERO
 	scene.position = -(_mesh.global_transform * ab.get_center())
 
-	# 冲刷遮罩 shader：默认灰尘，冲刷点附近露出通透蓝水晶。
+	# 双趟材质：灰尘层(不透明)为底，水晶层(透明)为 next_pass。
 	_mat = ShaderMaterial.new()
-	_mat.shader = _make_shader()
+	_mat.shader = _make_dust_shader()
+	var crystal := ShaderMaterial.new()
+	crystal.shader = _make_crystal_shader()
+	_mat.next_pass = crystal
 	var arrays := _mesh.mesh.surface_get_arrays(0)
 	_verts = arrays[Mesh.ARRAY_VERTEX]
 	_uvs = arrays[Mesh.ARRAY_TEX_UV]
 	_mask_tex = ImageTexture.create_from_image(_mask_img)
 	_mat.set_shader_parameter("wash_mask", _mask_tex)
+	crystal.set_shader_parameter("wash_mask", _mask_tex)
 	_mesh.material_override = _mat
 
 	# 三角网碰撞体，供射线拾取冲刷点。
@@ -462,35 +466,55 @@ func _find_mesh(n: Node) -> MeshInstance3D:
 			return r
 	return null
 
-func _make_shader() -> Shader:
+# 灰尘层：不透明、写深度、剔除背面 —— 覆尘处实心不穿模；露出处丢弃交给水晶层。
+func _make_dust_shader() -> Shader:
 	var sh := Shader.new()
 	sh.code = """
 shader_type spatial;
-render_mode blend_mix, cull_disabled, depth_draw_always, specular_schlick_ggx;
+render_mode cull_back, specular_disabled;
 
 uniform sampler2D wash_mask : filter_linear;
 uniform vec3 powder_color : source_color = vec3(0.34, 0.34, 0.36);
+
+void fragment() {
+	float reveal = texture(wash_mask, UV).r;
+	if (reveal > 0.5) discard;                 // 露出处交给水晶层
+	ALBEDO = powder_color;
+	ROUGHNESS = 1.0;                           // 纯漫反射哑光
+	METALLIC = 0.0;
+}
+"""
+	return sh
+
+# 水晶层：透明、双面、不写深度 —— 露出处通透可见背面刻面；覆尘处丢弃。
+func _make_crystal_shader() -> Shader:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode blend_mix, cull_disabled, specular_schlick_ggx;
+
+uniform sampler2D wash_mask : filter_linear;
 uniform vec3 diamond_color : source_color = vec3(0.12, 0.42, 0.92);
 
 void fragment() {
-	float reveal = texture(wash_mask, UV).r;   // 冲刷遮罩：0=覆尘, 1=露出水晶
-	// 菲涅尔：边缘更实、正对更透，像水晶。
+	float reveal = texture(wash_mask, UV).r;
+	if (reveal < 0.5) discard;                 // 覆尘处交给灰尘层
 	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
 	float crystal_alpha = mix(0.32, 0.9, fres);
-	ALBEDO = mix(powder_color, diamond_color, reveal);
-	ROUGHNESS = mix(1.0, 0.02, reveal);        // 灰尘纯漫反射 → 水晶镜面光滑
-	METALLIC = mix(0.0, 0.3, reveal);
-	SPECULAR = mix(0.0, 1.0, reveal);          // 灰尘无镜面 → 水晶强镜面
-	// 程序化环境强反光：按反射方向生成“影棚”亮斑，随视角移动，纯黑背景下也能强反光。
-	vec3 fn2 = normalize(NORMAL);                                        // 视图空间法线
+	ALBEDO = diamond_color;
+	ROUGHNESS = 0.02;
+	METALLIC = 0.3;
+	SPECULAR = 1.0;
+	// 程序化环境强反光：按反射方向生成“影棚”亮斑，纯黑背景下也能强反光。
+	vec3 fn2 = normalize(NORMAL);
 	vec3 rd = reflect(-normalize(VIEW), fn2);
 	vec3 rw = (INV_VIEW_MATRIX * vec4(rd, 0.0)).xyz;
-	float env = smoothstep(0.15, 1.0, rw.y) * 0.5;                       // 顶部大面光
-	env += pow(max(dot(rw, normalize(vec3(0.8, 0.7, 0.4))), 0.0), 50.0); // 亮斑 1
-	env += pow(max(dot(rw, normalize(vec3(-0.7, 0.5, 0.6))), 0.0), 70.0);// 亮斑 2
+	float env = smoothstep(0.15, 1.0, rw.y) * 0.5;
+	env += pow(max(dot(rw, normalize(vec3(0.8, 0.7, 0.4))), 0.0), 50.0);
+	env += pow(max(dot(rw, normalize(vec3(-0.7, 0.5, 0.6))), 0.0), 70.0);
 	float fres2 = pow(1.0 - clamp(dot(fn2, normalize(VIEW)), 0.0, 1.0), 4.0);
-	EMISSION = diamond_color * (0.55 * reveal) + diamond_color * env * (0.7 + 1.4 * fres2) * reveal;
-	ALPHA = mix(1.0, crystal_alpha, reveal);    // 灰尘不透明 → 冲刷露出后透明
+	EMISSION = diamond_color * 0.55 + diamond_color * env * (0.7 + 1.4 * fres2);
+	ALPHA = crystal_alpha;
 }
 """
 	return sh
