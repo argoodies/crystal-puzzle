@@ -481,7 +481,7 @@ void fragment() {
 func _build_spray_fx() -> void:
 	var p := CPUParticles3D.new()
 	p.emitting = false
-	p.amount = 1
+	p.amount = 3
 	p.lifetime = 0.7
 	p.lifetime_randomness = 0.5              # 寿命错开，避免整批同步生灭造成的脉动
 	p.explosiveness = 0.0
