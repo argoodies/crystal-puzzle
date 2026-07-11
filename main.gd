@@ -466,7 +466,7 @@ func _make_shader() -> Shader:
 	var sh := Shader.new()
 	sh.code = """
 shader_type spatial;
-render_mode blend_mix, cull_disabled, specular_schlick_ggx;
+render_mode blend_mix, cull_disabled, depth_draw_always, specular_schlick_ggx;
 
 uniform sampler2D wash_mask : filter_linear;
 uniform vec3 powder_color : source_color = vec3(0.34, 0.34, 0.36);
