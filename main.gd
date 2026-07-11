@@ -500,10 +500,10 @@ func _build_spray_fx() -> void:
 	p.scale_amount_max = 0.010
 	# 生命周期透明度：出生满(×base 0.08)→在 80% 处就淡到 0 并保持，
 	# 让末尾(含粒子回收边界)已全透明，避免结尾闪一下。
-	# 整段保持恒定，只在寿命最后 25% 渐隐到 0：快死时淡出，回收不突兀。
+	# 出生淡入 + 死亡淡出：旧的淡出、新的淡入，回收交接无缝（看不到"它回来那一下"）。
 	var grad := Gradient.new()
-	grad.offsets = PackedFloat32Array([0.0, 0.75, 1.0])
-	grad.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 1), Color(1, 1, 1, 0)])
+	grad.offsets = PackedFloat32Array([0.0, 0.25, 0.75, 1.0])
+	grad.colors = PackedColorArray([Color(1, 1, 1, 0), Color(1, 1, 1, 1), Color(1, 1, 1, 1), Color(1, 1, 1, 0)])
 	p.color_ramp = grad
 	var qm := QuadMesh.new()
 	qm.size = Vector2.ONE
