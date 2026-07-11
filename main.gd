@@ -481,7 +481,7 @@ void fragment() {
 func _build_spray_fx() -> void:
 	var p := CPUParticles3D.new()
 	p.emitting = false
-	p.amount = 3
+	p.amount = 1
 	p.lifetime = 0.7
 	p.lifetime_randomness = 0.5              # 寿命错开，避免整批同步生灭造成的脉动
 	p.explosiveness = 0.0
@@ -512,7 +512,7 @@ func _build_spray_fx() -> void:
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.albedo_texture = load("res://textures/droplet.png")   # 圆形水珠贴图
-	mat.albedo_color = Color(0.6, 0.72, 0.9, 0.08)     # 更透明的淡水雾
+	mat.albedo_color = Color(0.6, 0.72, 0.9, 0.2)      # 淡水色
 	qm.material = mat
 	p.mesh = qm
 	add_child(p)
