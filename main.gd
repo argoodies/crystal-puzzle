@@ -475,8 +475,11 @@ void fragment() {
 func _build_spray_fx() -> void:
 	var p := CPUParticles3D.new()
 	p.emitting = false
-	p.amount = 36
+	p.amount = 48
 	p.lifetime = 0.7
+	p.lifetime_randomness = 0.5              # 寿命错开，避免整批同步生灭造成的脉动
+	p.explosiveness = 0.0
+	p.randomness = 0.5
 	p.local_coords = false                 # 世界空间：拖动时留下水痕
 	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE_SURFACE   # 从小球面发射，不再单点堆成一团
 	p.emission_sphere_radius = 0.003
@@ -587,7 +590,8 @@ func _spray(screen_pos: Vector2) -> void:
 	var q := PhysicsRayQueryParameters3D.create(wo, wo + wd * 100.0)
 	var hit := space.intersect_ray(q)
 	if hit.is_empty():
-		_spray_fx.emitting = false               # 拖到模型外：停止喷水，不再停在原地
+		if _spray_fx.emitting:
+			_spray_fx.emitting = false           # 拖到模型外：停止喷水，不再停在原地
 		return
 	_spray_fx.global_position = hit.position     # 水花从接触点喷出
 	# 命中处最近顶点的 UV → 在遮罩上冲刷（UV 分岛天然只作用命中的那一面）。
@@ -606,7 +610,8 @@ func _spray(screen_pos: Vector2) -> void:
 func _process(delta: float) -> void:
 	if _spinning:
 		return                                # 旋转 4 周动画期间由 tween 接管
-	_spray_fx.emitting = _washing            # 松手即停发新水珠；已喷出的按寿命自然淡出
+	if _spray_fx.emitting != _washing:       # 仅在状态改变时设置，避免每帧重启粒子
+		_spray_fx.emitting = _washing
 	if _washing:
 		_spray(_wash_screen)
 		if not _sfx_water.playing:
