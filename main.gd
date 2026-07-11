@@ -418,11 +418,15 @@ func _spin4() -> void:
 	if axis.length() < 0.01:
 		axis = Vector3.UP
 	axis = axis.normalized()
+	var extra := randf_range(0.0, PI)                 # 4 整圈之外再随机多转 0~180°
 	var tw := create_tween().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 	tw.tween_method(
 		func(a: float): _world.transform = Transform3D(Basis(axis, a), Vector3.ZERO),
-		0.0, TAU * 4.0, 1.9)
-	tw.tween_callback(func(): _spinning = false)
+		0.0, TAU * 4.0 + extra, 1.9)
+	# 停在这个随机朝向（不回正）：把静止朝向记为最终欧拉角。
+	tw.tween_callback(func():
+		_manual_rot = _world.rotation
+		_spinning = false)
 	if _refresh_btn != null:
 		_refresh_btn.rotation = 0.0
 		create_tween().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT) \
@@ -627,7 +631,7 @@ func _process(delta: float) -> void:
 	if _spray_fx.emitting != want_emit:
 		_spray_fx.emitting = want_emit
 	_moved = false                            # 每帧消费，无余量
-	var target := Vector3(_manual_rot.x, _manual_rot.y, 0.0)
+	var target := _manual_rot
 	var weight := 1.0 - pow(0.002, delta)
 	_world.rotation = _world.rotation.lerp(target, weight)
 	# 神光光心 = 水晶中心（原点）的屏幕位置。
