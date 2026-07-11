@@ -14,9 +14,14 @@ const MSZ := 512                         # 冲刷遮罩纹理尺寸
 const WASH_UV_R := 0.035                  # 冲刷笔刷半径（UV 空间）
 const SEED_UV_R := 0.02                   # 初始无尘点半径（UV 空间）
 
+const MODELS := ["res://models/diamond.glb", "res://models/puzzle2.glb"]
+
 var _camera: Camera3D
 var _world: Node3D
 var _mesh: MeshInstance3D
+var _model_root: Node3D                    # 当前模型实例（换模型时释放）
+var _core_light: OmniLight3D              # 模型内部光源
+var _model_path := MODELS[0]              # 当前模型（存档）
 var _mat: ShaderMaterial
 var _verts: PackedVector3Array            # 模型顶点（局部空间）
 var _uvs: PackedVector2Array              # 对应 UV，用于把冲刷画进遮罩
@@ -59,7 +64,13 @@ func _ready() -> void:
 	_build_lights()
 	_world = Node3D.new()
 	add_child(_world)
-	_build_diamond()
+	var loaded := _load_state()               # 成功则填好 _mask_img/_model_path/状态
+	if not loaded:
+		_model_path = MODELS[randi() % MODELS.size()]
+		_mask_img = Image.create(MSZ, MSZ, false, Image.FORMAT_L8)
+	_build_model(_model_path)
+	if not loaded:
+		_seed_dust()                          # 新开局：随机覆尘（需 _uvs，故在建模后）
 	_build_godrays()
 	_build_toggle()
 	_apply_loaded_ui()                        # 恢复存档的按钮态/日夜
@@ -72,7 +83,7 @@ func _save_state() -> void:
 		_mask_img.save_png(SAVE_MASK)
 	var f := FileAccess.open(SAVE_STATE, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"btn": _btn_state, "delivered": _delivered, "night": _night}))
+		f.store_string(JSON.stringify({"btn": _btn_state, "delivered": _delivered, "night": _night, "model": _model_path}))
 		f.close()
 
 # 读存档：成功则填好 _mask_img + 状态，返回 true。
@@ -90,6 +101,9 @@ func _load_state() -> bool:
 			_btn_state = int(cfg.get("btn", ST_REFRESH))
 			_delivered = bool(cfg.get("delivered", false))
 			_night = bool(cfg.get("night", false))
+			var mp := str(cfg.get("model", MODELS[0]))
+			if mp in MODELS:
+				_model_path = mp
 	return true
 
 # 按已读入的状态设置按钮图标与日夜光照。
@@ -255,8 +269,14 @@ func _apply_lighting(animate: bool) -> void:
 
 # ---------- 覆粉钻石 ----------
 
-func _build_diamond() -> void:
-	var scene := (load("res://models/diamond.glb") as PackedScene).instantiate()
+# 用给定模型搭建覆尘水晶：网格 + 遮罩材质 + 碰撞 + 内部光源。可重复调用换模型。
+func _build_model(path: String) -> void:
+	if _model_root != null and is_instance_valid(_model_root):
+		_model_root.queue_free()
+	if _core_light != null and is_instance_valid(_core_light):
+		_core_light.queue_free()
+	var scene := (load(path) as PackedScene).instantiate()
+	_model_root = scene
 	_world.add_child(scene)
 	_mesh = _find_mesh(scene)
 	# 归一化：按局部包围盒缩放居中。
@@ -267,33 +287,27 @@ func _build_diamond() -> void:
 	scene.position = Vector3.ZERO
 	scene.position = -(_mesh.global_transform * ab.get_center())
 
-	# 冲刷遮罩 shader：默认白粉，冲刷点附近露出蓝钻。
+	# 冲刷遮罩 shader：默认灰尘，冲刷点附近露出通透蓝水晶。
 	_mat = ShaderMaterial.new()
 	_mat.shader = _make_shader()
 	var arrays := _mesh.mesh.surface_get_arrays(0)
 	_verts = arrays[Mesh.ARRAY_VERTEX]
 	_uvs = arrays[Mesh.ARRAY_TEX_UV]
-	# 冲刷遮罩纹理：随模型 UV，覆盖无上限。优先读取存档，否则随机覆尘。
-	var loaded := _load_state()
-	if not loaded:
-		_mask_img = Image.create(MSZ, MSZ, false, Image.FORMAT_L8)
 	_mask_tex = ImageTexture.create_from_image(_mask_img)
 	_mat.set_shader_parameter("wash_mask", _mask_tex)
 	_mesh.material_override = _mat
-	if not loaded:
-		_seed_dust()                        # 新开局：95% 有尘，随机 5% 已无尘
 
 	# 三角网碰撞体，供射线拾取冲刷点。
 	_mesh.create_trimesh_collision()
 
 	# 模型内部光源：从内部把水晶点亮，透过冲刷露出处透出内芒。
-	var core := OmniLight3D.new()
-	core.position = Vector3.ZERO
-	core.light_color = Color(0.5, 0.75, 1.0)
-	core.light_energy = 1.2
-	core.omni_range = TARGET_W * 1.2
-	core.shadow_enabled = false
-	_world.add_child(core)
+	_core_light = OmniLight3D.new()
+	_core_light.position = Vector3.ZERO
+	_core_light.light_color = Color(0.5, 0.75, 1.0)
+	_core_light.light_energy = 1.2
+	_core_light.omni_range = TARGET_W * 1.2
+	_core_light.shadow_enabled = false
+	_world.add_child(_core_light)
 
 # 重置为初始覆尘态：清空冲刷，随机撒若干“无尘”小点（约 5% 面积无尘）。
 func _seed_dust() -> void:
@@ -356,6 +370,9 @@ func _restart() -> void:
 	_btn_state = ST_REFRESH
 	_delivered = false
 	_refresh_btn.icon = load("res://textures/icon_refresh.png")
+	_model_path = MODELS[randi() % MODELS.size()]   # 随机换模型
+	_mask_img = Image.create(MSZ, MSZ, false, Image.FORMAT_L8)
+	_build_model(_model_path)
 	_seed_dust()
 	_spin4()
 	_save_state()
