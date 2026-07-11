@@ -54,6 +54,7 @@ var _sfx_whoosh: AudioStreamPlayer
 var _godray_mat: ShaderMaterial
 var _spray_fx: CPUParticles3D             # 喷水水花粒子
 var _wash_hitting := false                 # 正在擦拭且射线命中了模型
+var _move_grace := 0.0                      # 手指移动的余量时间：>0 才喷水珠
 var _dir: DirectionalLight3D
 var _spot: SpotLight3D
 var _env: Environment
@@ -447,7 +448,7 @@ uniform float density = 0.7;
 uniform float decayf = 0.95;
 uniform float weight = 0.5;
 uniform float exposure = 0.6;
-uniform float threshold = 0.85;              // 亮部阈值：水珠叠起来也够不到，只有水晶强高光出神光
+uniform float threshold = 0.72;              // 亮部阈值（用最大通道，蓝水晶也算亮）
 
 const int SAMPLES = 32;
 
@@ -621,8 +622,9 @@ func _process(delta: float) -> void:
 			_check_coverage()
 	else:
 		_wash_hitting = false
-	# 仅当"正在擦拭且命中模型"才喷；且只在状态改变时设置，避免每帧重启粒子。
-	var want_emit := _washing and _wash_hitting
+	_move_grace = maxf(0.0, _move_grace - delta)
+	# 只在"擦拭中 + 命中模型 + 手指正在移动"时喷水珠：停下/松手就不再生成，避免叠加变亮。
+	var want_emit := _washing and _wash_hitting and _move_grace > 0.0
 	if _spray_fx.emitting != want_emit:
 		_spray_fx.emitting = want_emit
 	var target := Vector3(_manual_rot.x, _manual_rot.y, 0.0)
@@ -671,6 +673,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _touches.size() == 1:
 			if _washing:
 				_wash_screen = event.position
+				_move_grace = 0.1               # 移动了 → 喷水
 			elif _bg_rotating:
 				_rotate_by(event.relative)
 		elif _touches.size() == 2:
@@ -704,6 +707,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion:
 		if _washing:
 			_wash_screen = event.position
+			_move_grace = 0.1               # 移动了 → 喷水
 		elif _bg_rotating or _rotating:
 			_rotate_by(event.relative)
 
