@@ -52,6 +52,7 @@ var _sfx_ding: AudioStreamPlayer
 var _sfx_click: AudioStreamPlayer
 var _sfx_whoosh: AudioStreamPlayer
 var _godray_mat: ShaderMaterial
+var _spray_fx: CPUParticles3D             # 喷水水花粒子
 var _dir: DirectionalLight3D
 var _spot: SpotLight3D
 var _env: Environment
@@ -64,6 +65,7 @@ func _ready() -> void:
 	_build_environment()
 	_build_camera()
 	_build_lights()
+	_build_spray_fx()
 	_world = Node3D.new()
 	add_child(_world)
 	var loaded := _load_state()               # 成功则填好 _mask_img/_model_path/状态
@@ -469,6 +471,35 @@ void fragment() {
 	rect.material = _godray_mat
 	layer.add_child(rect)
 
+# 喷水水花粒子：擦拭时从接触点喷出小水珠，拖动时拉出水痕。世界坐标模拟。
+func _build_spray_fx() -> void:
+	var p := CPUParticles3D.new()
+	p.emitting = false
+	p.amount = 36
+	p.lifetime = 0.5
+	p.local_coords = false                 # 世界空间：拖动时留下水痕
+	p.direction = Vector3(0.0, 0.5, 1.0).normalized()
+	p.spread = 55.0
+	p.initial_velocity_min = 1.3
+	p.initial_velocity_max = 3.0
+	p.gravity = Vector3(0.0, -5.0, 0.0)
+	p.damping_min = 1.0
+	p.damping_max = 2.5
+	p.scale_amount_min = 0.014
+	p.scale_amount_max = 0.032
+	var qm := QuadMesh.new()
+	qm.size = Vector2.ONE
+	var mat := StandardMaterial3D.new()
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(0.65, 0.85, 1.0, 0.9)
+	qm.material = mat
+	p.mesh = qm
+	add_child(p)
+	_spray_fx = p
+
 func _find_mesh(n: Node) -> MeshInstance3D:
 	if n is MeshInstance3D:
 		return n
@@ -548,6 +579,7 @@ func _spray(screen_pos: Vector2) -> void:
 	var hit := space.intersect_ray(q)
 	if hit.is_empty():
 		return
+	_spray_fx.global_position = hit.position     # 水花从接触点喷出
 	# 命中处最近顶点的 UV → 在遮罩上冲刷（UV 分岛天然只作用命中的那一面）。
 	var local: Vector3 = _mesh.global_transform.affine_inverse() * (hit.position as Vector3)
 	var bi := 0
@@ -564,6 +596,7 @@ func _spray(screen_pos: Vector2) -> void:
 func _process(delta: float) -> void:
 	if _spinning:
 		return                                # 旋转 4 周动画期间由 tween 接管
+	_spray_fx.emitting = _washing            # 擦拭时喷水
 	if _washing:
 		_spray(_wash_screen)
 		if not _sfx_water.playing:
