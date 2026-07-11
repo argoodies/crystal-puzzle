@@ -491,10 +491,10 @@ func _build_spray_fx() -> void:
 	qm.size = Vector2.ONE
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_MIX     # 普通混合，不再加法炸光
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = Color(0.65, 0.85, 1.0, 0.9)
+	mat.albedo_color = Color(0.45, 0.55, 0.66, 0.55)   # 调暗，低于神光/泛光阈值
 	qm.material = mat
 	p.mesh = qm
 	add_child(p)
