@@ -586,6 +586,7 @@ func _spray(screen_pos: Vector2) -> void:
 	var q := PhysicsRayQueryParameters3D.create(wo, wo + wd * 100.0)
 	var hit := space.intersect_ray(q)
 	if hit.is_empty():
+		_spray_fx.emitting = false               # 拖到模型外：停止喷水，不再停在原地
 		return
 	_spray_fx.global_position = hit.position     # 水花从接触点喷出
 	# 命中处最近顶点的 UV → 在遮罩上冲刷（UV 分岛天然只作用命中的那一面）。
