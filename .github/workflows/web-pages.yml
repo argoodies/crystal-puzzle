@@ -1,28 +1,18 @@
-name: Web → GitHub Pages
+name: Web → crystal-puzzle-web Pages
 
-# Godot 无头导出 Web（gl_compatibility + 无线程，适配 GitHub Pages 无 COOP/COEP 头），
-# 产物用官方 Pages Action 部署。push main 或手动触发。
+# Godot 无头导出 Web（gl_compatibility + 无线程，适配 GitHub Pages 无 COOP/COEP 头）。
+# 源码仓库(crystal-puzzle)可私有；产物跨仓库推到公开的 crystal-puzzle-web 的 gh-pages 分支托管。
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
-env:
-  GODOT_VERSION: "4.6.3"
-
 jobs:
   export:
-    name: Export Web
+    name: Export Web & Deploy
     runs-on: ubuntu-latest
+    env:
+      GODOT_VERSION: "4.6.3"
     steps:
       - uses: actions/checkout@v4
 
@@ -50,19 +40,14 @@ jobs:
           mkdir -p build/web
           godot --headless --export-release "Web" build/web/index.html
           test -f build/web/index.html
+          touch build/web/.nojekyll
           ls -la build/web
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: Deploy to crystal-puzzle-web (gh-pages)
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: build/web
-
-  deploy:
-    name: Deploy Pages
-    needs: export
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          personal_token: ${{ secrets.PAGES_PAT }}
+          external_repository: argoodies/crystal-puzzle-web
+          publish_branch: gh-pages
+          publish_dir: build/web
+          cname: ""
