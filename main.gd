@@ -487,8 +487,8 @@ func _build_spray_fx() -> void:
 	p.gravity = Vector3(0.0, -5.0, 0.0)
 	p.damping_min = 1.0
 	p.damping_max = 2.5
-	p.scale_amount_min = 0.006
-	p.scale_amount_max = 0.016
+	p.scale_amount_min = 0.0006
+	p.scale_amount_max = 0.0016
 	var qm := QuadMesh.new()
 	qm.size = Vector2.ONE
 	var mat := StandardMaterial3D.new()
