@@ -11,7 +11,7 @@ const MAX_ZOOM := 8.0
 const SAVE_MASK := "user://wipe_mask.png"    # 擦拭进度遮罩
 const SAVE_STATE := "user://wipe_state.json" # 按钮态/交付/日夜
 const MSZ := 1024                        # 冲刷遮罩纹理尺寸（更高→边缘更细腻）
-const WASH_UV_R := 0.044                  # 冲刷笔刷半径（UV 空间）
+const WASH_UV_R := 0.088                  # 冲刷笔刷半径（UV 空间）
 const SEED_UV_R := 0.013                  # 初始无尘点半径（UV 空间）
 
 const MODELS := ["res://models/diamond.glb", "res://models/puzzle2.glb"]
