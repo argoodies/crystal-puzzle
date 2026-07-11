@@ -489,10 +489,11 @@ func _build_spray_fx() -> void:
 	p.damping_max = 2.5
 	p.scale_amount_min = 0.004
 	p.scale_amount_max = 0.010
-	# 生命周期透明度：出生满(×base 0.08)→线性淡出到 0。
+	# 生命周期透明度：出生满(×base 0.08)→在 80% 处就淡到 0 并保持，
+	# 让末尾(含粒子回收边界)已全透明，避免结尾闪一下。
 	var grad := Gradient.new()
-	grad.offsets = PackedFloat32Array([0.0, 1.0])
-	grad.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 0)])
+	grad.offsets = PackedFloat32Array([0.0, 0.8, 1.0])
+	grad.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 0), Color(1, 1, 1, 0)])
 	p.color_ramp = grad
 	var qm := QuadMesh.new()
 	qm.size = Vector2.ONE
