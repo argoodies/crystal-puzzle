@@ -481,7 +481,7 @@ uniform vec2 light_uv = vec2(0.5, 0.5);      // 水晶屏幕位置（光心）
 uniform float density = 0.7;
 uniform float decayf = 0.95;
 uniform float weight = 0.5;
-uniform float exposure = 1.0;
+uniform float exposure = 0.5;
 uniform float threshold = 0.72;              // 亮部阈值（用最大通道，蓝水晶也算亮）
 
 const int SAMPLES = 32;
@@ -526,8 +526,8 @@ func _build_spray_fx() -> void:
 	p.gravity = Vector3(0.0, -5.0, 0.0)
 	p.damping_min = 1.0
 	p.damping_max = 2.5
-	p.scale_amount_min = 0.001
-	p.scale_amount_max = 0.0025
+	p.scale_amount_min = 0.004
+	p.scale_amount_max = 0.010
 	# 生命周期透明度：出生满(×base 0.08)→在 80% 处就淡到 0 并保持，
 	# 让末尾(含粒子回收边界)已全透明，避免结尾闪一下。
 	# 不做逐颗淡入淡出：擦拭时所有水珠恒定；整体淡出交给松手时 tween 材质透明度。
