@@ -884,27 +884,6 @@ func _build_gal_buttons() -> void:
 	rb.pressed.connect(func(): _gal_goto(1))
 	_gal_ui.add_child(lb)
 	_gal_ui.add_child(rb)
-	# 返回按钮（右上角，退出画廊回主游戏）。
-	var cb := TextureButton.new()
-	cb.texture_normal = load("res://textures/icon_close.png")
-	cb.ignore_texture_size = true
-	cb.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
-	cb.focus_mode = Control.FOCUS_NONE
-	cb.anchor_left = 1.0
-	cb.anchor_right = 1.0
-	var m := 40.0
-	var top := m
-	var vis := get_viewport().get_visible_rect().size
-	var win := Vector2(DisplayServer.window_get_size())
-	if win.x > 1.0 and win.y > 1.0:
-		top = DisplayServer.get_display_safe_area().position.y * (vis.y / win.y) + m
-	cb.offset_left = -m - 110.0
-	cb.offset_right = -m
-	cb.offset_top = top
-	cb.offset_bottom = top + 110.0
-	cb.pressed.connect(_toggle_gallery)
-	_wire_press(cb)
-	_gal_ui.add_child(cb)
 
 func _make_arrow(path: String, right: bool) -> TextureButton:
 	var b := TextureButton.new()
