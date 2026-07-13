@@ -64,6 +64,17 @@ var _env: Environment
 var _night := false
 var _toggle_btn: Button
 
+# ---------- 解锁画廊 ----------
+const GAL_ORIGIN := Vector3(0.0, 40.0, 0.0)  # 画廊远离水晶
+var _map_btn: Button
+var _in_gallery := false
+var _gallery_root: Node3D
+var _unlocked: Array = []                    # 解锁过(擦净交付)的模型 path
+var _gal_yaw := 0.0
+var _gal_pitch := 0.0
+var _gal_drag := false
+var _cam_saved := Transform3D.IDENTITY
+
 func _ready() -> void:
 	randomize()
 	_build_audio()
@@ -92,7 +103,7 @@ func _save_state() -> void:
 		_mask_img.save_png(SAVE_MASK)
 	var f := FileAccess.open(SAVE_STATE, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"btn": _btn_state, "delivered": _delivered, "night": _night, "model": _model_path}))
+		f.store_string(JSON.stringify({"btn": _btn_state, "delivered": _delivered, "night": _night, "model": _model_path, "unlocked": _unlocked}))
 		f.close()
 
 # 读存档：成功则填好 _mask_img + 状态，返回 true。
@@ -113,6 +124,11 @@ func _load_state() -> bool:
 			var mp := str(cfg.get("model", MODELS[0]))
 			if mp in MODELS:
 				_model_path = mp
+			var ul = cfg.get("unlocked", [])
+			if ul is Array:
+				for p in ul:
+					if p in MODELS and not _unlocked.has(p):
+						_unlocked.append(p)
 	return true
 
 # 按已读入的状态设置按钮图标与日夜光照。
@@ -121,6 +137,8 @@ func _apply_loaded_ui() -> void:
 		_refresh_btn.icon = load("res://textures/icon_circle.png")
 	elif _btn_state == ST_DELIVERED:
 		_refresh_btn.icon = load("res://textures/icon_check.png")
+		if _map_btn != null:
+			_map_btn.visible = true
 	if _night:
 		_apply_lighting(false)
 
@@ -225,6 +243,18 @@ func _build_toggle() -> void:
 	_refresh_btn.pressed.connect(_on_topbtn)
 	layer.add_child(_refresh_btn)
 
+	# 刷新按钮下方：地图按钮（交付后可见，看解锁模型画廊）。
+	_map_btn = Button.new()
+	_map_btn.flat = true
+	_map_btn.focus_mode = Control.FOCUS_NONE
+	_map_btn.anchor_left = 1.0
+	_map_btn.anchor_right = 1.0
+	_map_btn.icon = load("res://textures/icon_map.png")
+	_map_btn.expand_icon = true
+	_map_btn.visible = false
+	_map_btn.pressed.connect(_toggle_gallery)
+	layer.add_child(_map_btn)
+
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
 
@@ -251,6 +281,12 @@ func _apply_safe_area() -> void:
 		_refresh_btn.offset_left = -right - btn
 		_refresh_btn.offset_top = top
 		_refresh_btn.offset_bottom = top + btn
+	if _map_btn != null:
+		var my := top + btn + 24.0            # 刷新按钮下方
+		_map_btn.offset_right = -right
+		_map_btn.offset_left = -right - btn
+		_map_btn.offset_top = my
+		_map_btn.offset_bottom = my + btn
 
 func _on_toggle() -> void:
 	_night = not _night
@@ -419,6 +455,10 @@ func _enter_delivered() -> void:
 	_washing = false
 	_sfx_water.stop()
 	_sfx_reward.play()
+	if not _unlocked.has(_model_path):          # 解锁当前模型
+		_unlocked.append(_model_path)
+	if _map_btn != null:
+		_map_btn.visible = true                 # 打勾后显示地图按钮
 	_save_state()
 
 # 刷新/重新开始：重置覆尘态并旋转 4 周。
@@ -426,6 +466,8 @@ func _restart() -> void:
 	_btn_state = ST_REFRESH
 	_delivered = false
 	_refresh_btn.icon = load("res://textures/icon_refresh.png")
+	if _map_btn != null:
+		_map_btn.visible = false                    # 非交付态隐藏地图按钮
 	_sfx_whoosh.play()                              # 刷新音效（配合旋转）
 	_model_path = MODELS[randi() % MODELS.size()]   # 随机换模型
 	_mask_img = Image.create(MSZ, MSZ, false, Image.FORMAT_L8)
@@ -556,6 +598,113 @@ func _find_mesh(n: Node) -> MeshInstance3D:
 			return r
 	return null
 
+# ---------- 解锁画廊 ----------
+
+func _toggle_gallery() -> void:
+	_sfx_click.play()
+	_in_gallery = not _in_gallery
+	if _in_gallery:
+		_enter_gallery()
+	else:
+		_exit_gallery()
+
+func _enter_gallery() -> void:
+	_world.visible = false                       # 藏起当前水晶
+	_spray_fx.emitting = false
+	_spray_fx.visible = false
+	_toggle_btn.visible = false
+	_refresh_btn.visible = false                 # 地图按钮保留(作返回)
+	_cam_saved = _camera.transform
+	_gal_yaw = 0.0
+	_gal_pitch = 0.0
+	_touches.clear()
+	_build_gallery()
+
+func _exit_gallery() -> void:
+	if _gallery_root != null and is_instance_valid(_gallery_root):
+		_gallery_root.queue_free()
+		_gallery_root = null
+	_world.visible = true
+	_spray_fx.visible = true
+	_toggle_btn.visible = true
+	_refresh_btn.visible = true
+	_camera.transform = _cam_saved
+	_touches.clear()
+
+# 把所有解锁过的模型摆成一排(干净水晶+各自内光)，相机取景。
+func _build_gallery() -> void:
+	if _gallery_root != null and is_instance_valid(_gallery_root):
+		_gallery_root.queue_free()
+	_gallery_root = Node3D.new()
+	_gallery_root.position = GAL_ORIGIN
+	add_child(_gallery_root)
+
+	var models: Array = _unlocked.duplicate()
+	if models.is_empty():
+		models = [_model_path]
+	var n := models.size()
+	var spacing := 3.0
+	var disp := 1.6                              # 每个模型展示尺寸
+	# 全 1 遮罩 → 水晶层不 discard，显示为完全干净的水晶。
+	var white := Image.create(4, 4, false, Image.FORMAT_L8)
+	white.fill(Color(1, 1, 1))
+	var wtex := ImageTexture.create_from_image(white)
+	for i in n:
+		var holder := Node3D.new()
+		holder.position = Vector3((float(i) - float(n - 1) * 0.5) * spacing, 0.0, 0.0)
+		_gallery_root.add_child(holder)
+		var scene := (load(models[i]) as PackedScene).instantiate()
+		var m := _find_mesh(scene)
+		if m != null:
+			var ab := m.get_aabb()
+			var ext: float = maxf(ab.size.x, maxf(ab.size.y, ab.size.z))
+			var sc := disp / maxf(ext, 0.0001)
+			scene.scale = Vector3.ONE * sc
+			scene.position = -(ab.get_center()) * sc   # 居中到 holder
+			var cm := ShaderMaterial.new()
+			cm.shader = _make_crystal_shader()
+			cm.set_shader_parameter("wash_mask", wtex)
+			m.material_override = cm
+		holder.add_child(scene)
+		# 每个模型一盏内光
+		var lt := OmniLight3D.new()
+		lt.position = holder.position
+		lt.light_color = Color(0.5, 0.75, 1.0)
+		lt.light_energy = 1.8
+		lt.omni_range = disp * 2.4
+		lt.shadow_enabled = false
+		_gallery_root.add_child(lt)
+
+	# 相机取景：让整排在屏宽内(KEEP_WIDTH, fov52)。
+	var span: float = maxf(float(n) * spacing, 3.0)
+	var d: float = span / 0.85 / (2.0 * tan(deg_to_rad(26.0)))
+	_camera.transform = Transform3D(Basis.IDENTITY, GAL_ORIGIN + Vector3(0.0, 0.2, maxf(d, 3.5)))
+	_camera.look_at(GAL_ORIGIN, Vector3.UP)
+
+func _gallery_input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			_touches[event.index] = event.position
+		else:
+			_touches.erase(event.index)
+	elif event is InputEventScreenDrag:
+		if _touches.has(event.index):
+			_touches[event.index] = event.position
+		if _touches.size() == 1:
+			_gal_drag_rotate(event.relative)
+	elif event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			_gal_drag = event.pressed
+	elif event is InputEventMouseMotion:
+		if _gal_drag:
+			_gal_drag_rotate(event.relative)
+
+func _gal_drag_rotate(rel: Vector2) -> void:
+	_gal_yaw += rel.x * 0.006
+	_gal_pitch = clampf(_gal_pitch - rel.y * 0.006, -deg_to_rad(80.0), deg_to_rad(80.0))
+	if _gallery_root != null and is_instance_valid(_gallery_root):
+		_gallery_root.rotation = Vector3(_gal_pitch, _gal_yaw, 0.0)
+
 # 灰尘层：不透明、写深度、剔除背面 —— 覆尘处实心不穿模；露出处丢弃交给水晶层。
 func _make_dust_shader() -> Shader:
 	var sh := Shader.new()
@@ -643,6 +792,12 @@ func _spray(screen_pos: Vector2) -> void:
 # ---------- 每帧 ----------
 
 func _process(delta: float) -> void:
+	if _in_gallery:                           # 画廊：只更新神光光心到画廊中心
+		if _godray_mat != null:
+			var gvp := get_viewport().get_visible_rect().size
+			if gvp.x > 0.0 and gvp.y > 0.0:
+				_godray_mat.set_shader_parameter("light_uv", _camera.unproject_position(GAL_ORIGIN) / gvp)
+		return
 	if _spinning:
 		return                                # 旋转 4 周动画期间由 tween 接管
 	if _washing:
@@ -693,6 +848,9 @@ func _set_washing(on: bool, pos: Vector2) -> void:
 		_save_state()                       # 每次擦拭松手保存进度
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _in_gallery:
+		_gallery_input(event)
+		return
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			_touches[event.index] = event.position
