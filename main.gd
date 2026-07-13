@@ -27,7 +27,8 @@ var _verts: PackedVector3Array            # 模型顶点（局部空间）
 var _uvs: PackedVector2Array              # 对应 UV，用于把冲刷画进遮罩
 var _mask_img: Image                      # 冲刷遮罩：0=覆尘, 1=已冲刷露出
 var _mask_tex: ImageTexture
-var _refresh_btn: Button
+var _circle_btn: Button                     # 底部中央：达标圆圈→交付对勾
+var _play_btn: Button                       # 底部中央：▶️ 随机下一关
 var _spinning := false                     # 旋转4周动画中，暂停常规旋转/冲刷
 
 const ST_REFRESH := 0                       # 右上角按钮状态：刷新
@@ -140,14 +141,18 @@ func _load_state() -> bool:
 						_unlocked.append(p)
 	return true
 
-# 按已读入的状态设置按钮图标与日夜光照。
-func _apply_loaded_ui() -> void:
+# 按当前 _btn_state 恢复底部按钮显示。
+func _apply_bottom_state() -> void:
 	if _btn_state == ST_CIRCLE:
-		_refresh_btn.icon = load("res://textures/icon_circle.png")
+		_show_circle()
 	elif _btn_state == ST_DELIVERED:
-		_refresh_btn.icon = load("res://textures/icon_refresh.png")   # 已交付静息：可点的刷新
-		if _map_btn != null:
-			_map_btn.visible = true
+		_reveal_dual(false)
+	else:
+		_hide_bottom_ui()
+
+# 按已读入的状态设置底部按钮与日夜光照。
+func _apply_loaded_ui() -> void:
+	_apply_bottom_state()
 	if _night:
 		_apply_lighting(false)
 
@@ -240,62 +245,85 @@ func _build_toggle() -> void:
 	_toggle_btn.pressed.connect(_on_toggle)
 	layer.add_child(_toggle_btn)
 
-	# 右上角：刷新按钮（重置覆尘 + 旋转 4 周）。
-	_refresh_btn = Button.new()
-	_refresh_btn.flat = true
-	_refresh_btn.focus_mode = Control.FOCUS_NONE
-	_refresh_btn.anchor_left = 1.0
-	_refresh_btn.anchor_right = 1.0
-	_refresh_btn.pivot_offset = Vector2(72.0, 72.0)   # 绕中心旋转（144x144）
-	_refresh_btn.icon = load("res://textures/icon_refresh.png")
-	_refresh_btn.expand_icon = true
-	_refresh_btn.pressed.connect(_on_topbtn)
-	layer.add_child(_refresh_btn)
+	# 底部中央：达标圆圈 / 交付对勾（同一个按钮切换图标）。
+	_circle_btn = _make_flat_btn("res://textures/icon_circle.png")
+	_circle_btn.pressed.connect(_on_circle)
+	_circle_btn.visible = false
+	layer.add_child(_circle_btn)
 
-	# 刷新按钮下方：地图按钮（交付后可见，看解锁模型画廊）。
-	_map_btn = Button.new()
-	_map_btn.flat = true
-	_map_btn.focus_mode = Control.FOCUS_NONE
-	_map_btn.anchor_left = 1.0
-	_map_btn.anchor_right = 1.0
-	_map_btn.icon = load("res://textures/icon_map.png")
-	_map_btn.expand_icon = true
-	_map_btn.visible = true                          # 常驻
+	# 底部中央双按钮：画廊 + ▶️ 随机下一关（交付后出现）。
+	_map_btn = _make_flat_btn("res://textures/icon_map.png")
 	_map_btn.pressed.connect(_toggle_gallery)
+	_map_btn.visible = false
 	layer.add_child(_map_btn)
+	_play_btn = _make_flat_btn("res://textures/icon_play.png")
+	_play_btn.pressed.connect(_play_next)
+	_play_btn.visible = false
+	layer.add_child(_play_btn)
 
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
 
+func _make_flat_btn(icon_path: String) -> Button:
+	var b := Button.new()
+	b.flat = true
+	b.focus_mode = Control.FOCUS_NONE
+	b.icon = load(icon_path)
+	b.expand_icon = true
+	return b
+
 func _apply_safe_area() -> void:
-	var btn := 144.0
+	var btn := 140.0
 	var m := 40.0
 	var vis := get_viewport().get_visible_rect().size
 	var win := Vector2(DisplayServer.window_get_size())
 	var top := m
 	var left := m
-	var right := m
+	var bottom := m
 	if win.x > 1.0 and win.y > 1.0:
 		var sc := Vector2(vis.x / win.x, vis.y / win.y)
 		var safe := DisplayServer.get_display_safe_area()
 		top = safe.position.y * sc.y + m
 		left = safe.position.x * sc.x + m
-		right = (win.x - (safe.position.x + safe.size.x)) * sc.x + m
+		bottom = (win.y - (safe.position.y + safe.size.y)) * sc.y + m
+	# 日/夜：左上角
 	_toggle_btn.offset_left = left
 	_toggle_btn.offset_right = left + btn
 	_toggle_btn.offset_top = top
 	_toggle_btn.offset_bottom = top + btn
-	if _refresh_btn != null:
-		_refresh_btn.offset_right = -right
-		_refresh_btn.offset_left = -right - btn
-		_refresh_btn.offset_top = top
-		_refresh_btn.offset_bottom = top + btn
+	# 底部中央按钮的竖直位置（靠近下方，但抬高一些）。
+	var yb := bottom + 200.0
+	var g := 70.0                              # 双按钮间距
+	# 圆圈：水平居中
+	if _circle_btn != null:
+		_circle_btn.anchor_left = 0.5
+		_circle_btn.anchor_right = 0.5
+		_circle_btn.anchor_top = 1.0
+		_circle_btn.anchor_bottom = 1.0
+		_circle_btn.offset_left = -btn * 0.5
+		_circle_btn.offset_right = btn * 0.5
+		_circle_btn.offset_bottom = -yb
+		_circle_btn.offset_top = -yb - btn
+	# 画廊（居中偏左）
 	if _map_btn != null:
-		var my := top + btn + 24.0            # 刷新按钮下方
-		_map_btn.offset_right = -right
-		_map_btn.offset_left = -right - btn
-		_map_btn.offset_top = my
-		_map_btn.offset_bottom = my + btn
+		_map_btn.anchor_left = 0.5
+		_map_btn.anchor_right = 0.5
+		_map_btn.anchor_top = 1.0
+		_map_btn.anchor_bottom = 1.0
+		_map_btn.offset_left = -g * 0.5 - btn
+		_map_btn.offset_right = -g * 0.5
+		_map_btn.offset_bottom = -yb
+		_map_btn.offset_top = -yb - btn
+	# 播放（居中偏右）
+	if _play_btn != null:
+		_play_btn.anchor_left = 0.5
+		_play_btn.anchor_right = 0.5
+		_play_btn.anchor_top = 1.0
+		_play_btn.anchor_bottom = 1.0
+		_play_btn.offset_left = g * 0.5
+		_play_btn.offset_right = g * 0.5 + btn
+		_play_btn.offset_bottom = -yb
+		_play_btn.offset_top = -yb - btn
 
 func _on_toggle() -> void:
 	_night = not _night
@@ -498,71 +526,82 @@ func _paint(uv: Vector2, r: float, do_update: bool = true) -> void:
 	if do_update:
 		_mask_tex.update(_mask_img)
 
-# 右上角按钮：刷新 → 交付(圆圈→对勾) → 重新开始。
-func _on_topbtn() -> void:
-	match _btn_state:
-		ST_REFRESH:
-			_restart()
-		ST_CIRCLE:
-			_enter_delivered()
-		ST_DELIVERED:
-			if _deliver_lock:                   # 对勾期间不可点
-				return
-			_restart()
+# ---------- 底部按钮：圆圈 / 对勾 / 双按钮(画廊+播放) ----------
 
-# 冲刷达 99% → 进入“可交付”态：按钮变圆圈（仍可继续擦拭）。
+func _hide_bottom_ui() -> void:
+	if _circle_btn != null:
+		_circle_btn.visible = false
+	if _map_btn != null:
+		_map_btn.visible = false
+	if _play_btn != null:
+		_play_btn.visible = false
+
+# 显示达标圆圈（淡入），隐藏双按钮。
+func _show_circle() -> void:
+	_hide_bottom_ui()
+	_circle_btn.icon = load("res://textures/icon_circle.png")
+	_circle_btn.disabled = false
+	_circle_btn.modulate.a = 0.0
+	_circle_btn.visible = true
+	create_tween().tween_property(_circle_btn, "modulate:a", 1.0, 0.3)
+
+# 显示双按钮（画廊 + ▶️）。animate=true 时淡入。
+func _reveal_dual(animate: bool) -> void:
+	if _circle_btn != null:
+		_circle_btn.visible = false
+	_map_btn.visible = true
+	_play_btn.visible = true
+	var a0 := 0.0 if animate else 1.0
+	_map_btn.modulate.a = a0
+	_play_btn.modulate.a = a0
+	if animate:
+		var tw := create_tween().set_parallel(true)
+		tw.tween_property(_map_btn, "modulate:a", 1.0, 0.4)
+		tw.tween_property(_play_btn, "modulate:a", 1.0, 0.4)
+
+# 冲刷达标 → 底部中央淡入圆圈（仍可继续擦拭）。
 func _enter_circle() -> void:
 	_btn_state = ST_CIRCLE
-	_refresh_btn.icon = load("res://textures/icon_circle.png")
+	_show_circle()
 	_sfx_ding.play()                        # 首次达 99% → 短“叮”提示可完成
 	_save_state()
 
-# 点击圆圈 → 交付：变对勾、奖励音、禁冲刷（只能旋转）。
+# 点击圆圈 → 交付：圆圈变对勾、奖励音、禁冲刷；1 秒后对勾渐隐，双按钮渐现。
+func _on_circle() -> void:
+	if _deliver_lock:
+		return
+	_enter_delivered()
+
 func _enter_delivered() -> void:
 	_btn_state = ST_DELIVERED
 	_delivered = true
-	_refresh_btn.icon = load("res://textures/icon_check.png")
 	_washing = false
 	_sfx_water.stop()
 	_sfx_reward.play()
 	if not _unlocked.has(_model_path):          # 解锁当前模型
 		_unlocked.append(_model_path)
-	if _map_btn != null:
-		_map_btn.visible = true                 # 打勾后显示地图按钮
 	_save_state()
-	_show_delivered_button()
-
-# 交付态按钮：先显示对勾并锁定 1 秒不可点，随后变回刷新按钮（点击=重开一局）。
-func _show_delivered_button() -> void:
-	_refresh_btn.icon = load("res://textures/icon_check.png")
+	# 圆圈变对勾并锁定，1 秒后对勾渐隐 → 双按钮渐现。
+	_circle_btn.icon = load("res://textures/icon_check.png")
+	_circle_btn.modulate.a = 1.0
+	_circle_btn.visible = true
 	_deliver_lock = true
-	get_tree().create_timer(1.0).timeout.connect(func():
+	var tw := create_tween()
+	tw.tween_interval(1.0)
+	tw.tween_property(_circle_btn, "modulate:a", 0.0, 0.4)
+	tw.tween_callback(func():
+		_circle_btn.visible = false
 		_deliver_lock = false
 		if _btn_state == ST_DELIVERED:
-			_refresh_btn.icon = load("res://textures/icon_refresh.png"))
+			_reveal_dual(true))
 
-# 刷新/重新开始：重置覆尘态并旋转 4 周。
-# 选下一个模型：优先没解锁过的(逐个凑齐画廊)，全解锁后随机但尽量不与当前重复。
-func _next_model() -> String:
-	var locked: Array = []
-	for m in MODELS:
-		if not _unlocked.has(m):
-			locked.append(m)
-	if not locked.is_empty():
-		return locked[randi() % locked.size()]
-	if MODELS.size() > 1:
-		var p: String = _model_path
-		while p == _model_path:
-			p = MODELS[randi() % MODELS.size()]
-		return p
-	return MODELS[randi() % MODELS.size()]
-
-func _restart() -> void:
+# ▶️ 播放：随机换一个水晶模型的未清洗态，重新开始擦拭。
+func _play_next() -> void:
+	_sfx_whoosh.play()
+	_hide_bottom_ui()
 	_btn_state = ST_REFRESH
 	_delivered = false
-	_refresh_btn.icon = load("res://textures/icon_refresh.png")
-	_sfx_whoosh.play()                              # 刷新音效（配合旋转）
-	_model_path = _next_model()                     # 优先换未解锁的模型
+	_model_path = MODELS[randi() % MODELS.size()]   # 随机一个模型
 	_mask_img = Image.create(MSZ, MSZ, false, Image.FORMAT_L8)
 	_build_model(_model_path)
 	_seed_dust()
@@ -576,8 +615,8 @@ func _check_coverage() -> void:
 	if _coverage() >= 0.999:
 		_enter_circle()
 
-# 让水晶旋转 4 整圈后回正；刷新按钮图标同步转 4 圈。
-func _spin4(spin_button := true) -> void:
+# 让水晶旋转 4 整圈后停在随机朝向。
+func _spin4() -> void:
 	_spinning = true
 	_manual_rot = Vector3.ZERO
 	var axis := Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), randf_range(-1.0, 1.0))
@@ -593,10 +632,6 @@ func _spin4(spin_button := true) -> void:
 	tw.tween_callback(func():
 		_manual_rot = _world.rotation
 		_spinning = false)
-	if spin_button and _refresh_btn != null:      # 交付态只转模型，右上按钮不转
-		_refresh_btn.rotation = 0.0
-		create_tween().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT) \
-			.tween_property(_refresh_btn, "rotation", TAU * 4.0, 1.9)
 
 # 屏幕空间体积光（丁达尔/神光）：以水晶屏幕位置为光心，把亮部沿放射方向拖成光柱叠加。
 func _build_godrays() -> void:
@@ -710,8 +745,7 @@ func _open_gallery() -> void:
 	_spray_fx.emitting = false
 	_spray_fx.visible = false
 	_toggle_btn.visible = false
-	_refresh_btn.visible = false
-	_map_btn.visible = false                     # 画廊页不显示地图按钮，改用画廊内返回按钮
+	_hide_bottom_ui()                            # 画廊页隐藏底部按钮，改用画廊内返回按钮
 	_cam_saved = _camera.transform
 	_camera.transform = Transform3D(Basis.IDENTITY, Vector3(0.0, 0.5, 7.36))
 	if _gallery_root != null and is_instance_valid(_gallery_root):
@@ -740,8 +774,7 @@ func _close_gallery() -> void:
 	_world.visible = true
 	_spray_fx.visible = true
 	_toggle_btn.visible = true
-	_refresh_btn.visible = true
-	_map_btn.visible = true                       # 回到主游戏，地图按钮常驻
+	_apply_bottom_state()                         # 回主游戏，按当前状态恢复底部按钮
 	_camera.transform = _cam_saved
 	_touches.clear()
 
@@ -896,7 +929,7 @@ func _gal_goto(dir: int) -> void:
 	_gal_tw.tween_property(self, "_gal_scroll", target, 0.4)
 
 # 选定当前关：关闭画廊后进入该关。
-# 已完成(解锁)的关 → 直接进入完成态(整颗洗净 + 对勾 + 只旋转欣赏)；
+# 已完成(解锁)的关 → 进入完成态(整颗洗净 + 底部双按钮)；
 # 未完成的关 → 从头覆尘擦拭。
 func _pick_level(i: int) -> void:
 	_sfx_whoosh.play()
@@ -907,15 +940,15 @@ func _pick_level(i: int) -> void:
 		_mask_img.fill(Color(1, 1, 1))               # 整颗洗净
 		_btn_state = ST_DELIVERED
 		_delivered = true
-		_refresh_btn.icon = load("res://textures/icon_refresh.png")   # 可点的刷新
 		_build_model(_model_path)
+		_reveal_dual(false)                          # 底部双按钮：画廊 + 播放
 	else:
 		_btn_state = ST_REFRESH
 		_delivered = false
-		_refresh_btn.icon = load("res://textures/icon_refresh.png")
 		_build_model(_model_path)
 		_seed_dust()
-	_spin4()                                         # 入场旋转（模型 + 按钮）
+		_hide_bottom_ui()
+	_spin4()                                         # 入场旋转
 	_save_state()
 
 # 画廊内触摸：拖拽旋转当前模型（翻页交给左右按钮）；轻点进入当前关。
