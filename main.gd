@@ -243,6 +243,7 @@ func _build_toggle() -> void:
 	_toggle_btn.add_theme_font_size_override("font_size", 108)
 	_toggle_btn.text = "☀️"
 	_toggle_btn.pressed.connect(_on_toggle)
+	_wire_press(_toggle_btn)
 	layer.add_child(_toggle_btn)
 
 	# 底部中央：达标圆圈 / 交付对勾（同一个按钮切换图标）。
@@ -270,7 +271,20 @@ func _make_flat_btn(icon_path: String) -> Button:
 	b.focus_mode = Control.FOCUS_NONE
 	b.icon = load(icon_path)
 	b.expand_icon = true
+	_wire_press(b)
 	return b
+
+# 给按钮加"按下弹一下"反馈：绕中心先放大再缩回。
+func _wire_press(b: BaseButton) -> void:
+	b.button_down.connect(func(): _press_pop(b))
+
+func _press_pop(b: Control) -> void:
+	if not is_instance_valid(b):
+		return
+	b.pivot_offset = b.size * 0.5             # 绕中心缩放
+	var tw := create_tween().set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(b, "scale", Vector2(1.18, 1.18), 0.09).set_ease(Tween.EASE_OUT)
+	tw.tween_property(b, "scale", Vector2.ONE, 0.13).set_ease(Tween.EASE_IN_OUT)
 
 func _apply_safe_area() -> void:
 	var btn := 144.0                           # 左上日/夜按钮
@@ -889,6 +903,7 @@ func _build_gal_buttons() -> void:
 	cb.offset_top = top
 	cb.offset_bottom = top + 110.0
 	cb.pressed.connect(_toggle_gallery)
+	_wire_press(cb)
 	_gal_ui.add_child(cb)
 
 func _make_arrow(path: String, right: bool) -> TextureButton:
@@ -899,6 +914,7 @@ func _make_arrow(path: String, right: bool) -> TextureButton:
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(120, 120)
 	b.size = Vector2(120, 120)
+	_wire_press(b)
 	b.anchor_top = 0.5
 	b.anchor_bottom = 0.5
 	b.offset_top = -60.0
