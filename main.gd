@@ -407,6 +407,65 @@ func _wipe_stroke() -> void:
 		dir = ((_verts[best] - _verts[idx]).normalized() * 0.7 + dir * 0.3).normalized()
 		idx = best
 
+# —— 针对任意网格生成"约 20% 已擦"的种子遮罩（画廊未完成关用，手感同主游戏）——
+func _make_seeded_mask(verts: PackedVector3Array, uvs: PackedVector2Array, diag: float) -> Image:
+	var img := Image.create(MSZ, MSZ, false, Image.FORMAT_L8)
+	img.fill(Color(0, 0, 0))
+	if verts.is_empty() or uvs.is_empty():
+		return img
+	var guard := 0
+	while _mask_coverage(img, uvs) < 0.20 and guard < 30:
+		_seed_stroke(img, verts, uvs, diag)
+		guard += 1
+	return img
+
+func _seed_stroke(img: Image, verts: PackedVector3Array, uvs: PackedVector2Array, diag: float) -> void:
+	var idx := randi() % verts.size()
+	var dir := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)).normalized()
+	var stride: float = diag * 0.02
+	for step in 24:
+		_paint_into(img, uvs[idx], WASH_UV_R)
+		var target: Vector3 = verts[idx] + dir * stride
+		var best := idx
+		var bd := INF
+		for vi in verts.size():
+			var d := verts[vi].distance_squared_to(target)
+			if d < bd:
+				bd = d
+				best = vi
+		if best == idx:
+			break
+		dir = ((verts[best] - verts[idx]).normalized() * 0.7 + dir * 0.3).normalized()
+		idx = best
+
+func _mask_coverage(img: Image, uvs: PackedVector2Array) -> float:
+	if uvs.is_empty():
+		return 1.0
+	var cleaned := 0
+	for i in uvs.size():
+		var px := clampi(int(uvs[i].x * MSZ), 0, MSZ - 1)
+		var py := clampi(int(uvs[i].y * MSZ), 0, MSZ - 1)
+		if img.get_pixel(px, py).r > 0.5:
+			cleaned += 1
+	return float(cleaned) / float(uvs.size())
+
+func _paint_into(img: Image, uv: Vector2, r: float) -> void:
+	var cx := uv.x * float(MSZ)
+	var cy := uv.y * float(MSZ)
+	var rp := r * float(MSZ)
+	var x0 := int(maxf(0.0, floor(cx - rp)))
+	var x1 := int(minf(MSZ - 1, ceil(cx + rp)))
+	var y0 := int(maxf(0.0, floor(cy - rp)))
+	var y1 := int(minf(MSZ - 1, ceil(cy + rp)))
+	for y in range(y0, y1 + 1):
+		for x in range(x0, x1 + 1):
+			var d := Vector2(x - cx, y - cy).length()
+			if d > rp:
+				continue
+			var v := 1.0 - smoothstep(rp * 0.4, rp, d)
+			if v > img.get_pixel(x, y).r:
+				img.set_pixel(x, y, Color(v, v, v))
+
 # 无尘顶点占比（0~1）。
 func _coverage() -> float:
 	if _uvs.is_empty():
@@ -706,8 +765,14 @@ func _gal_make_page(page: int) -> Node3D:
 		crystal.shader = _make_crystal_shader()
 		mat.next_pass = crystal
 		var done: bool = _unlocked.has(MODELS[page])
-		var img := Image.create(8, 8, false, Image.FORMAT_L8)
-		img.fill(Color(1, 1, 1) if done else Color(0, 0, 0))   # 全露=洗净 / 全覆=尘土
+		var img: Image
+		if done:
+			img = Image.create(8, 8, false, Image.FORMAT_L8)
+			img.fill(Color(1, 1, 1))                           # 全露=洗净
+		else:
+			# 未完成：和主游戏一样，随机约 20% 已擦的无尘区（其余覆尘）。
+			var arrays := m.mesh.surface_get_arrays(0)
+			img = _make_seeded_mask(arrays[Mesh.ARRAY_VERTEX], arrays[Mesh.ARRAY_TEX_UV], ab.size.length())
 		var tex := ImageTexture.create_from_image(img)
 		mat.set_shader_parameter("wash_mask", tex)
 		crystal.set_shader_parameter("wash_mask", tex)
