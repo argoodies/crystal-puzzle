@@ -280,23 +280,23 @@ func _apply_safe_area() -> void:
 	var win := Vector2(DisplayServer.window_get_size())
 	var top := m
 	var left := m
+	var right := m
 	var bottom := m
 	if win.x > 1.0 and win.y > 1.0:
 		var sc := Vector2(vis.x / win.x, vis.y / win.y)
 		var safe := DisplayServer.get_display_safe_area()
 		top = safe.position.y * sc.y + m
 		left = safe.position.x * sc.x + m
+		right = (win.x - (safe.position.x + safe.size.x)) * sc.x + m
 		bottom = (win.y - (safe.position.y + safe.size.y)) * sc.y + m
 	# 日/夜：左上角
 	_toggle_btn.offset_left = left
 	_toggle_btn.offset_right = left + btn
 	_toggle_btn.offset_top = top
 	_toggle_btn.offset_bottom = top + btn
-	# 底部中央按钮的竖直位置（靠近下方，但抬高一些）。
-	var yb := bottom + 210.0
-	var g := 90.0                              # 双按钮间距
-	# 圆圈：水平居中
+	# 圆圈：底部中央（靠近下方，但抬高一些）。
 	if _circle_btn != null:
+		var yb := bottom + 210.0
 		_circle_btn.anchor_left = 0.5
 		_circle_btn.anchor_right = 0.5
 		_circle_btn.anchor_top = 1.0
@@ -305,26 +305,22 @@ func _apply_safe_area() -> void:
 		_circle_btn.offset_right = bbtn * 0.5
 		_circle_btn.offset_bottom = -yb
 		_circle_btn.offset_top = -yb - bbtn
-	# 画廊（居中偏左）
-	if _map_btn != null:
-		_map_btn.anchor_left = 0.5
-		_map_btn.anchor_right = 0.5
-		_map_btn.anchor_top = 1.0
-		_map_btn.anchor_bottom = 1.0
-		_map_btn.offset_left = -g * 0.5 - bbtn
-		_map_btn.offset_right = -g * 0.5
-		_map_btn.offset_bottom = -yb
-		_map_btn.offset_top = -yb - bbtn
-	# 播放（居中偏右）
+	# 交付后：画廊 + 播放，右上角横向排列，与日/夜同大(btn)。播放最靠右，画廊在其左。
+	var g := 28.0                              # 两按钮间距
 	if _play_btn != null:
-		_play_btn.anchor_left = 0.5
-		_play_btn.anchor_right = 0.5
-		_play_btn.anchor_top = 1.0
-		_play_btn.anchor_bottom = 1.0
-		_play_btn.offset_left = g * 0.5
-		_play_btn.offset_right = g * 0.5 + bbtn
-		_play_btn.offset_bottom = -yb
-		_play_btn.offset_top = -yb - bbtn
+		_play_btn.anchor_left = 1.0
+		_play_btn.anchor_right = 1.0
+		_play_btn.offset_right = -right
+		_play_btn.offset_left = -right - btn
+		_play_btn.offset_top = top
+		_play_btn.offset_bottom = top + btn
+	if _map_btn != null:
+		_map_btn.anchor_left = 1.0
+		_map_btn.anchor_right = 1.0
+		_map_btn.offset_right = -right - btn - g
+		_map_btn.offset_left = -right - btn - g - btn
+		_map_btn.offset_top = top
+		_map_btn.offset_bottom = top + btn
 
 func _on_toggle() -> void:
 	_night = not _night
