@@ -912,7 +912,7 @@ func _pick_level(i: int) -> void:
 		_delivered = true
 		_build_model(_model_path)
 		_reveal_dual(false)                          # 底部双按钮：画廊 + 播放
-		_sfx_reward.play()                           # 进入已完成场景 → 庆祝音
+		_sfx_click.play()                            # 进入已完成场景 → 按键音
 	else:
 		_btn_state = ST_REFRESH
 		_delivered = false
