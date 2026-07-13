@@ -64,10 +64,17 @@ var _env: Environment
 var _night := false
 var _toggle_btn: Button
 
-# ---------- 选关画廊（2D 平面）----------
+# ---------- 选关画廊（3D 横向翻页轮播）----------
+const PAGE_DX := 8.0                          # 相邻两页在世界里的横向间距（大于屏宽，邻页在屏外）
 var _map_btn: Button
 var _in_gallery := false
-var _gal_layer: CanvasLayer                  # 全屏选关覆盖层
+var _gallery_root: Node3D                     # 画廊根，挂当前页模型
+var _gal_cur: Node3D                          # 当前居中的页
+var _gal_page := 0
+var _gal_anim := false                        # 翻页动画锁
+var _gal_sx := 0.0                            # 触摸起点 x
+var _gal_moved := false
+var _cam_saved := Transform3D.IDENTITY
 var _unlocked: Array = []                    # 解锁过(擦净交付)的模型 path
 
 func _ready() -> void:
@@ -609,8 +616,9 @@ func _find_mesh(n: Node) -> MeshInstance3D:
 	return null
 
 # ---------- 选关画廊（2D 平面）----------
-# 一个全屏平面选关界面：每关一枚拼图图标，已完成(解锁)蓝色，未完成灰色。
-# 点任意关卡即进入该关重新擦拭。
+# 横向循环翻页轮播：一次居中展示一关的 3D 模型。
+# 已完成(解锁)的显示为洗净无尘的通透水晶；未完成的显示为覆满尘土。
+# 左右滑动翻页(循环)，轻点当前模型进入该关，右上地图按钮返回。
 
 func _toggle_gallery() -> void:
 	_sfx_click.play()
@@ -622,65 +630,91 @@ func _toggle_gallery() -> void:
 func _open_gallery() -> void:
 	_in_gallery = true
 	_touches.clear()
-	if _gal_layer != null and is_instance_valid(_gal_layer):
-		_gal_layer.queue_free()
-	_gal_layer = CanvasLayer.new()
-	_gal_layer.layer = 10
-	add_child(_gal_layer)
-
-	# 半透明深色背景，吃掉点击；点空白处返回。
-	var bg := ColorRect.new()
-	bg.color = Color(0.03, 0.04, 0.07, 0.96)
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.mouse_filter = Control.MOUSE_FILTER_STOP
-	bg.gui_input.connect(func(e):
-		if (e is InputEventMouseButton and e.pressed) or (e is InputEventScreenTouch and e.pressed):
-			_toggle_gallery())
-	_gal_layer.add_child(bg)
-
-	# 关卡拼图图标横向居中排列，每块上放数字 1-n。
-	var grid := HBoxContainer.new()
-	grid.add_theme_constant_override("separation", 60)
-	grid.alignment = BoxContainer.ALIGNMENT_CENTER
-	grid.set_anchors_preset(Control.PRESET_CENTER)
-	grid.anchor_left = 0.0
-	grid.anchor_right = 1.0
-	grid.offset_top = -110.0
-	grid.offset_bottom = 110.0
-	_gal_layer.add_child(grid)
-
-	var tile := load("res://textures/puzzle_tile.png")
-	for i in MODELS.size():
-		var b := TextureButton.new()
-		b.texture_normal = tile
-		b.ignore_texture_size = true
-		b.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
-		b.custom_minimum_size = Vector2(220, 220)
-		b.focus_mode = Control.FOCUS_NONE
-		var done: bool = _unlocked.has(MODELS[i])
-		b.self_modulate = Color(0.35, 0.62, 1.0) if done else Color(0.42, 0.44, 0.5)
-		var idx := i
-		b.pressed.connect(func(): _pick_level(idx))
-		grid.add_child(b)
-		# 数字覆盖在拼图中央。
-		var num := Label.new()
-		num.text = str(i + 1)
-		num.add_theme_font_size_override("font_size", 96)
-		num.add_theme_color_override("font_color", Color(0.06, 0.09, 0.16))
-		num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		num.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		num.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		num.set_anchors_preset(Control.PRESET_FULL_RECT)
-		b.add_child(num)
+	_world.visible = false                       # 藏起当前水晶
+	_spray_fx.emitting = false
+	_spray_fx.visible = false
+	_toggle_btn.visible = false
+	_refresh_btn.visible = false                 # 地图按钮保留(作返回)
+	_cam_saved = _camera.transform
+	_camera.transform = Transform3D(Basis.IDENTITY, Vector3(0.0, 0.5, 7.36))
+	if _gallery_root != null and is_instance_valid(_gallery_root):
+		_gallery_root.queue_free()
+	_gallery_root = Node3D.new()
+	add_child(_gallery_root)
+	_gal_page = clampi(_gal_page, 0, MODELS.size() - 1)
+	_gal_cur = _gal_make_page(_gal_page)
+	_gal_cur.position = Vector3.ZERO
+	_gal_anim = false
 
 func _close_gallery() -> void:
 	_in_gallery = false
-	if _gal_layer != null and is_instance_valid(_gal_layer):
-		_gal_layer.queue_free()
-		_gal_layer = null
+	if _gallery_root != null and is_instance_valid(_gallery_root):
+		_gallery_root.queue_free()
+		_gallery_root = null
+	_gal_cur = null
+	_world.visible = true
+	_spray_fx.visible = true
+	_toggle_btn.visible = true
+	_refresh_btn.visible = true
+	_camera.transform = _cam_saved
 	_touches.clear()
 
-# 选定某关：关闭选关界面，载入该模型从头擦拭。
+# 造一页：该关模型 + 双趟材质(洗净=全露/未洗=全覆尘) + 内部光源。居中在原点。
+func _gal_make_page(page: int) -> Node3D:
+	var holder := Node3D.new()
+	_gallery_root.add_child(holder)
+	var scene := (load(MODELS[page]) as PackedScene).instantiate()
+	holder.add_child(scene)
+	var m := _find_mesh(scene)
+	if m != null:
+		var ab := m.get_aabb()
+		var ext: float = maxf(ab.size.x, maxf(ab.size.y, ab.size.z))
+		var sc := TARGET_W / maxf(ext, 0.0001)
+		scene.scale = Vector3(sc, sc, sc)
+		scene.position = -(m.global_transform * ab.get_center())
+		# 双趟材质：灰尘层(底) + 水晶层(next_pass)。
+		var mat := ShaderMaterial.new()
+		mat.shader = _make_dust_shader()
+		var crystal := ShaderMaterial.new()
+		crystal.shader = _make_crystal_shader()
+		mat.next_pass = crystal
+		var done: bool = _unlocked.has(MODELS[page])
+		var img := Image.create(8, 8, false, Image.FORMAT_L8)
+		img.fill(Color(1, 1, 1) if done else Color(0, 0, 0))   # 全露=洗净 / 全覆=尘土
+		var tex := ImageTexture.create_from_image(img)
+		mat.set_shader_parameter("wash_mask", tex)
+		crystal.set_shader_parameter("wash_mask", tex)
+		m.material_override = mat
+	# 每页一盏内部光源，透出内芒 + 供神光。
+	var lt := OmniLight3D.new()
+	lt.light_color = Color(0.5, 0.75, 1.0)
+	lt.light_energy = 1.8
+	lt.omni_range = TARGET_W * 1.2
+	lt.shadow_enabled = false
+	holder.add_child(lt)
+	return holder
+
+# 翻页：dir=+1 下一关(从右滑入)，dir=-1 上一关(从左滑入)，循环。
+func _gal_goto(dir: int) -> void:
+	if _gal_anim or _gallery_root == null or MODELS.size() <= 1:
+		return
+	_gal_anim = true
+	_sfx_whoosh.play()
+	var next_page := (_gal_page + dir + MODELS.size()) % MODELS.size()
+	var incoming := _gal_make_page(next_page)
+	incoming.position = Vector3(float(dir) * PAGE_DX, 0.0, 0.0)   # 从屏外一侧进入
+	var outgoing := _gal_cur
+	var tw := create_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(incoming, "position", Vector3.ZERO, 0.35)
+	tw.tween_property(outgoing, "position", Vector3(float(-dir) * PAGE_DX, 0.0, 0.0), 0.35)
+	tw.chain().tween_callback(func():
+		if is_instance_valid(outgoing):
+			outgoing.queue_free()
+		_gal_cur = incoming
+		_gal_page = next_page
+		_gal_anim = false)
+
+# 选定当前关：关闭画廊，载入该模型从头擦拭。
 func _pick_level(i: int) -> void:
 	_sfx_whoosh.play()
 	_close_gallery()
@@ -694,6 +728,22 @@ func _pick_level(i: int) -> void:
 	_build_model(_model_path)
 	_seed_dust()
 	_save_state()
+
+# 画廊内触摸：横向滑动翻页；轻点(几乎没移动)进入当前关。
+func _gallery_input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch or event is InputEventMouseButton:
+		if event.pressed:
+			_gal_sx = event.position.x
+			_gal_moved = false
+		else:
+			var dx: float = event.position.x - _gal_sx
+			if absf(dx) > 80.0:
+				_gal_goto(1 if dx < 0.0 else -1)   # 左滑→下一关
+			elif not _gal_moved:
+				_pick_level(_gal_page)             # 轻点进入当前关
+	elif event is InputEventScreenDrag or event is InputEventMouseMotion:
+		if absf(event.position.x - _gal_sx) > 12.0:
+			_gal_moved = true
 
 # 灰尘层：不透明、写深度、剔除背面 —— 覆尘处实心不穿模；露出处丢弃交给水晶层。
 func _make_dust_shader() -> Shader:
@@ -782,7 +832,11 @@ func _spray(screen_pos: Vector2) -> void:
 # ---------- 每帧 ----------
 
 func _process(delta: float) -> void:
-	if _in_gallery:                           # 选关界面覆盖全屏，暂停 3D 逻辑
+	if _in_gallery:                           # 画廊：只更新神光光心到中心模型
+		if _godray_mat != null:
+			var gvp := get_viewport().get_visible_rect().size
+			if gvp.x > 0.0 and gvp.y > 0.0:
+				_godray_mat.set_shader_parameter("light_uv", _camera.unproject_position(Vector3.ZERO) / gvp)
 		return
 	if _spinning:
 		return                                # 旋转 4 周动画期间由 tween 接管
@@ -835,7 +889,8 @@ func _set_washing(on: bool, pos: Vector2) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _in_gallery:
-		return                                # 选关界面由 Control 处理点击
+		_gallery_input(event)
+		return
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			_touches[event.index] = event.position
