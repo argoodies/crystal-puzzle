@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://dv8564n8s5x6g"
-path="res://.godot/imported/diamond.glb-42f960d4cfeb5ccb1dc81301e8e27659.scn"
+uid="uid://b8o3bsds20782"
+path="res://.godot/imported/fortuneteller.glb-f673501e6a45eaab76760784f4c6d74b.scn"
 
 [deps]
 
-source_file="res://models/diamond.glb"
-dest_files=["res://.godot/imported/diamond.glb-42f960d4cfeb5ccb1dc81301e8e27659.scn"]
+source_file="res://models/fortuneteller.glb"
+dest_files=["res://.godot/imported/fortuneteller.glb-f673501e6a45eaab76760784f4c6d74b.scn"]
 
 [params]
 

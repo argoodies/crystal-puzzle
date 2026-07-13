@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c7rl8tkt1sdcf"
-path="res://.godot/imported/diamond_blue+crystal+block+3d+model_normal.jpg-bfe68e1eeaf4883e8c238950c0ce9715.ctex"
+uid="uid://dp2yfyfsanrlv"
+path="res://.godot/imported/fortuneteller_crystal+ball+3d+model_rm.jpg-031236790c2fbfc7a1b5a9a87d607d96.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "e2ab695e0387c3e083f9afe5b9c759ae"
+"md5": "6bec6142c387f94ae1b718495c43ed23"
 }
 
 [deps]
 
-source_file="res://models/diamond_blue+crystal+block+3d+model_normal.jpg"
-dest_files=["res://.godot/imported/diamond_blue+crystal+block+3d+model_normal.jpg-bfe68e1eeaf4883e8c238950c0ce9715.ctex"]
+source_file="res://models/fortuneteller_crystal+ball+3d+model_rm.jpg"
+dest_files=["res://.godot/imported/fortuneteller_crystal+ball+3d+model_rm.jpg-031236790c2fbfc7a1b5a9a87d607d96.ctex"]
 
 [params]
 
