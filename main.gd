@@ -145,7 +145,7 @@ func _apply_loaded_ui() -> void:
 	if _btn_state == ST_CIRCLE:
 		_refresh_btn.icon = load("res://textures/icon_circle.png")
 	elif _btn_state == ST_DELIVERED:
-		_refresh_btn.icon = load("res://textures/icon_refresh.png")   # 交付态静息显示刷新
+		_show_delivered_button()               # 对勾 1 秒 → 刷新
 		if _map_btn != null:
 			_map_btn.visible = true
 	if _night:
@@ -471,7 +471,11 @@ func _enter_delivered() -> void:
 	if _map_btn != null:
 		_map_btn.visible = true                 # 打勾后显示地图按钮
 	_save_state()
-	# 对勾锁定 1 秒不可点，随后变回刷新按钮（仍是交付态：点击=重开一局）。
+	_show_delivered_button()
+
+# 交付态按钮：先显示对勾并锁定 1 秒不可点，随后变回刷新按钮（点击=重开一局）。
+func _show_delivered_button() -> void:
+	_refresh_btn.icon = load("res://textures/icon_check.png")
 	_deliver_lock = true
 	get_tree().create_timer(1.0).timeout.connect(func():
 		_deliver_lock = false
@@ -838,8 +842,8 @@ func _pick_level(i: int) -> void:
 		_mask_img.fill(Color(1, 1, 1))               # 整颗洗净
 		_btn_state = ST_DELIVERED
 		_delivered = true
-		_refresh_btn.icon = load("res://textures/icon_check.png")
 		_build_model(_model_path)
+		_show_delivered_button()                     # 对勾 1 秒 → 刷新
 	else:
 		_btn_state = ST_REFRESH
 		_delivered = false
