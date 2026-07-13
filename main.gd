@@ -8,8 +8,7 @@ const TARGET_W := 3.6                    # 模型最长边世界尺寸（放大 
 const ROT_SENS := 0.006
 const MIN_ZOOM := 3.08                    # 最近：水晶约占屏宽 120%
 const MAX_ZOOM := 10.85                   # 最远：水晶约占屏宽 34%
-const SAVE_MASK := "user://wipe_mask.png"    # 擦拭进度遮罩
-const SAVE_STATE := "user://wipe_state.json" # 按钮态/交付/日夜
+const SAVE_STATE := "user://wipe_state.json" # 偏好：日/夜 + 已解锁
 const MSZ := 1024                        # 冲刷遮罩纹理尺寸（更高→边缘更细腻）
 const WASH_UV_R := 0.124                  # 冲刷笔刷半径（UV 空间，面积约 2 倍）
 const SEED_UV_R := 0.013                  # 初始无尘点半径（UV 空间）
@@ -95,52 +94,35 @@ func _ready() -> void:
 	_build_spray_fx()
 	_world = Node3D.new()
 	add_child(_world)
-	var loaded := _load_state()               # 成功则填好 _mask_img/_model_path/状态
-	if not loaded:
-		_model_path = MODELS[randi() % MODELS.size()]
-		_mask_img = Image.create(MSZ, MSZ, false, Image.FORMAT_L8)
-	_build_model(_model_path)
-	if not loaded:
-		_seed_dust()                          # 新开局：随机覆尘（需 _uvs，故在建模后）
+	_load_prefs()                             # 只读 日/夜 + 已解锁（不保存半程进度）
 	_build_godrays()
 	_build_toggle()
-	_apply_loaded_ui()                        # 恢复存档的按钮态/日夜
-	_spin4()                                  # 入场旋转（模型 + 右上按钮一起转）
+	if _night:
+		_apply_lighting(false)
+	# 每次启动都是一个新的未完成水晶；进入未完成主场景 → 迷团音。
+	_load_random_level()
+	_sfx_enter.play()
 
 # ---------- 存档 ----------
 
+# 只持久化偏好：日/夜 + 已解锁模型（不保存半程擦拭进度）。
 func _save_state() -> void:
-	if _mask_img != null:
-		_mask_img.save_png(SAVE_MASK)
 	var f := FileAccess.open(SAVE_STATE, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"btn": _btn_state, "delivered": _delivered, "night": _night, "model": _model_path, "unlocked": _unlocked}))
+		f.store_string(JSON.stringify({"night": _night, "unlocked": _unlocked}))
 		f.close()
 
-# 读存档：成功则填好 _mask_img + 状态，返回 true。
-func _load_state() -> bool:
-	if not FileAccess.file_exists(SAVE_MASK):
-		return false
-	var img := Image.load_from_file(SAVE_MASK)
-	if img == null or img.get_width() != MSZ or img.get_height() != MSZ:
-		return false
-	img.convert(Image.FORMAT_L8)
-	_mask_img = img
-	if FileAccess.file_exists(SAVE_STATE):
-		var cfg = JSON.parse_string(FileAccess.get_file_as_string(SAVE_STATE))
-		if cfg is Dictionary:
-			_btn_state = int(cfg.get("btn", ST_REFRESH))
-			_delivered = bool(cfg.get("delivered", false))
-			_night = bool(cfg.get("night", false))
-			var mp := str(cfg.get("model", MODELS[0]))
-			if mp in MODELS:
-				_model_path = mp
-			var ul = cfg.get("unlocked", [])
-			if ul is Array:
-				for p in ul:
-					if p in MODELS and not _unlocked.has(p):
-						_unlocked.append(p)
-	return true
+func _load_prefs() -> void:
+	if not FileAccess.file_exists(SAVE_STATE):
+		return
+	var cfg = JSON.parse_string(FileAccess.get_file_as_string(SAVE_STATE))
+	if cfg is Dictionary:
+		_night = bool(cfg.get("night", false))
+		var ul = cfg.get("unlocked", [])
+		if ul is Array:
+			for p in ul:
+				if p in MODELS and not _unlocked.has(p):
+					_unlocked.append(p)
 
 # 按当前 _btn_state 恢复底部按钮显示。
 func _apply_bottom_state() -> void:
@@ -151,11 +133,17 @@ func _apply_bottom_state() -> void:
 	else:
 		_hide_bottom_ui()
 
-# 按已读入的状态设置底部按钮与日夜光照。
-func _apply_loaded_ui() -> void:
-	_apply_bottom_state()
-	if _night:
-		_apply_lighting(false)
+# 载入一个随机的未完成(覆尘)水晶，重新开始擦拭。
+func _load_random_level() -> void:
+	_btn_state = ST_REFRESH
+	_delivered = false
+	_hide_bottom_ui()
+	_model_path = MODELS[randi() % MODELS.size()]
+	_mask_img = Image.create(MSZ, MSZ, false, Image.FORMAT_L8)
+	_build_model(_model_path)
+	_seed_dust()
+	_spin4()
+	_save_state()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST \
@@ -611,18 +599,10 @@ func _enter_delivered() -> void:
 		if _btn_state == ST_DELIVERED:
 			_reveal_dual(true))
 
-# ▶️ 播放：随机换一个水晶模型的未清洗态，重新开始擦拭。
+# ▶️ 播放：换关（随机一个未清洗水晶）。换关本身只出按键音。
 func _play_next() -> void:
-	_sfx_enter.play()                               # 换关：迷团钟琴音
-	_hide_bottom_ui()
-	_btn_state = ST_REFRESH
-	_delivered = false
-	_model_path = MODELS[randi() % MODELS.size()]   # 随机一个模型
-	_mask_img = Image.create(MSZ, MSZ, false, Image.FORMAT_L8)
-	_build_model(_model_path)
-	_seed_dust()
-	_spin4()
-	_save_state()
+	_sfx_click.play()
+	_load_random_level()
 
 # 冲刷进度检测：无尘顶点占比 ≥ 99.9% → 进入可交付态。
 func _check_coverage() -> void:
@@ -929,7 +909,6 @@ func _gal_goto(dir: int) -> void:
 # 已完成(解锁)的关 → 进入完成态(整颗洗净 + 底部双按钮)；
 # 未完成的关 → 从头覆尘擦拭。
 func _pick_level(i: int) -> void:
-	_sfx_enter.play()                               # 进关：迷团钟琴音
 	_close_gallery()
 	_model_path = MODELS[i]
 	_mask_img = Image.create(MSZ, MSZ, false, Image.FORMAT_L8)
@@ -939,12 +918,14 @@ func _pick_level(i: int) -> void:
 		_delivered = true
 		_build_model(_model_path)
 		_reveal_dual(false)                          # 底部双按钮：画廊 + 播放
+		_sfx_reward.play()                           # 进入已完成场景 → 庆祝音
 	else:
 		_btn_state = ST_REFRESH
 		_delivered = false
 		_build_model(_model_path)
 		_seed_dust()
 		_hide_bottom_ui()
+		_sfx_enter.play()                            # 进入未完成场景 → 迷团音
 	_spin4()                                         # 入场旋转
 	_save_state()
 
