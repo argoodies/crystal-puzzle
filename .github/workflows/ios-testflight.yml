@@ -79,17 +79,46 @@ jobs:
           # build 号抬到 1000+，避免与共用同一 App id 的旧 Swift 项目(号 ~40s)撞车，确保本构建永远最新。
           BUILD_NUM=$(( 1000 + ${{ github.run_number }} ))
           echo "BUILD_NUM=$BUILD_NUM"
-          # 改生成工程里所有 Info.plist：唯一 build 号 + UIDeviceFamily（Godot 没写，Apple 校验必需）。
-          # 显示名交给 Godot 的 config/name + name_localized（生成各语言 *.lproj/InfoPlist.strings，随设备语言动态显示）。
+          # 改生成工程里所有 Info.plist：唯一 build 号 + UIDeviceFamily（Godot 没写，Apple 校验必需）
+          # + 支持的本地化语言（配合下面注入的 lproj，实现随设备语言动态显示应用名）。
           for PL in $(find build/ios -name '*-Info.plist' -o -name 'Info.plist'); do
             /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$PL" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Delete :UIDeviceFamily" "$PL" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily array" "$PL" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:0 integer 1" "$PL" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:1 integer 2" "$PL" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Delete :CFBundleLocalizations" "$PL" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :CFBundleLocalizations array" "$PL" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :CFBundleLocalizations:0 string en" "$PL" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :CFBundleLocalizations:1 string ja" "$PL" 2>/dev/null || true
           done
-          echo "== lproj InfoPlist.strings (Godot localized names) =="
-          find build/ios -path '*.lproj/InfoPlist.strings' -print -exec cat {} \; || true
+
+          # 动态应用名：Godot 4.6 iOS 导出忽略 name_localized，这里手动注入本地化 InfoPlist.strings。
+          # 英文设备 → Crystal Polish；日文/其他设备 → 水晶磨き（base + ja.lproj）。
+          BASEDIR=$(dirname "$XCPROJ")/"$SCHEME"
+          mkdir -p "$BASEDIR/en.lproj" "$BASEDIR/ja.lproj"
+          printf '"CFBundleDisplayName" = "Crystal Polish";\n"CFBundleName" = "Crystal Polish";\n' > "$BASEDIR/en.lproj/InfoPlist.strings"
+          printf '"CFBundleDisplayName" = "水晶磨き";\n"CFBundleName" = "水晶磨き";\n' > "$BASEDIR/ja.lproj/InfoPlist.strings"
+          gem install xcodeproj --quiet --no-document
+          XCPROJ="$XCPROJ" SCHEME="$SCHEME" ruby -e '
+            require "xcodeproj"
+            proj = Xcodeproj::Project.open(ENV["XCPROJ"])
+            proj.root_object.known_regions |= ["en", "ja", "Base"]
+            vg = proj.objects.find { |o| o.isa == "PBXVariantGroup" && o.display_name == "InfoPlist.strings" }
+            abort("no InfoPlist.strings variant group") unless vg
+            %w[en ja].each do |loc|
+              next if vg.children.any? { |c| (c.respond_to?(:name) && c.name == loc) || (c.respond_to?(:path) && c.path.to_s.include?("#{loc}.lproj")) }
+              ref = proj.new(Xcodeproj::Project::Object::PBXFileReference)
+              ref.name = loc
+              ref.path = "#{loc}.lproj/InfoPlist.strings"
+              ref.source_tree = "<group>"
+              ref.last_known_file_type = "text.plist.strings"
+              vg.children << ref
+            end
+            proj.save
+            puts "variant children: " + vg.children.map { |c| c.respond_to?(:name) ? c.name : c.display_name }.inspect
+          '
+          echo "== injected lproj =="; for f in "$BASEDIR"/*.lproj/InfoPlist.strings; do echo "--- $f"; cat "$f"; done
 
           xcodebuild -project "$XCPROJ" -scheme "$SCHEME" -configuration Release \
             -destination 'generic/platform=iOS' \
