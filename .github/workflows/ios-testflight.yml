@@ -86,7 +86,7 @@ jobs:
             /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily array" "$PL" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:0 integer 1" "$PL" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:1 integer 2" "$PL" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 擦水晶" "$PL" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string 擦水晶" "$PL" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName クリスタル磨き" "$PL" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string クリスタル磨き" "$PL" 2>/dev/null || true
           done
 
           xcodebuild -project "$XCPROJ" -scheme "$SCHEME" -configuration Release \
