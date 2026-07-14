@@ -260,7 +260,7 @@ func _build_toggle() -> void:
 # 毛玻璃透镜底：半透明白 + 圆角 + 亮边 + 柔光，营造 2D 玻璃按钮质感。
 func _glass_style(pressed := false) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(1.0, 1.0, 1.0, 0.11 if pressed else 0.06)
+	sb.bg_color = Color(1.0, 1.0, 1.0, 0.06 if pressed else 0.0)
 	sb.set_corner_radius_all(44)
 	sb.set_border_width_all(2)
 	sb.border_color = Color(1.0, 1.0, 1.0, 0.24)
