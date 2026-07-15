@@ -74,8 +74,8 @@ const TABLE_SPACING := 2.6                      # 桌面上模型的密堆积间
 const TABLE_DISP := 0.55                        # 模型在桌上的显示缩放（相对 TARGET_W）
 const BOARD_LEN := 40.0                         # 桌板长边（约拼图的 20 倍，拼图桌上显示 ~2 单位）
 const ROOM_CENTER_Y := 2.0                      # 相机注视点高度（桌面之上）
-const ELEV_MIN := -1.52                          # 相机仰角自由（仅避开两极万向锁）
-const ELEV_MAX := 1.52
+const ELEV_MIN := 0.05                            # 相机仰角下限：略高于棋盘平面（不得转到平面以下）
+const ELEV_MAX := 1.52                            # 上限：近俯视
 var _map_btn: Button
 var _in_room := false
 var _room_root: Node3D                        # 成就空间根
