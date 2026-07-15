@@ -76,7 +76,7 @@ const TABLE_SPACING := 2.6                      # 桌面上模型的密堆积间
 const TABLE_DISP := 0.55                        # 模型在桌上的显示缩放（相对 TARGET_W）
 const BOARD_LEN := 40.0                         # 桌板长边（约拼图的 20 倍，拼图桌上显示 ~2 单位）
 const ROOM_CENTER_Y := 2.0                      # 相机注视点高度（桌面之上）
-const ROOM_ELEV := 0.32                            # 固定俯角（略高于水平看瓶子）
+const ROOM_ELEV := 0.42                            # 固定俯角（略俯视，露出远端瓶口）
 var _room_yaw := 0.0                               # 绕竖直轴方位角
 var _room_yaw_vel := 0.0                           # 方位角惯性（弧度/秒）
 var _map_btn: Button
@@ -1050,7 +1050,8 @@ func _build_room_multimesh(path: String, count: int, start_g: int) -> MultiMeshI
 
 func _update_room_cam() -> void:
 	# 只绕竖直轴旋转：固定俯角 ROOM_ELEV，方位角 _room_yaw 决定绕 Y 环绕位置。
-	var center := Vector3(0.0, _room_cy, 0.0)
+	# 注视点略上抬，让远端瓶口探进画面上缘一点。
+	var center := Vector3(0.0, _room_cy + _room_R * 0.35, 0.0)
 	var ce := cos(ROOM_ELEV)
 	var offset := Vector3(ce * sin(_room_yaw), sin(ROOM_ELEV), ce * cos(_room_yaw)) * _room_dist
 	_camera.transform = Transform3D.IDENTITY.looking_at(-offset, Vector3.UP)
