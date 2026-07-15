@@ -141,7 +141,9 @@ var _bub_life: PackedFloat32Array
 var _bub_r: PackedFloat32Array
 var _bub_idx := 0
 var _cam_saved := Transform3D.IDENTITY
-var _counts: Dictionary = {}                  # 模型 path -> 完成(交付)次数
+var _counts: Dictionary = {}                  # 模型 path -> 完成次数（由 _crystal_queue 派生）
+var _crystal_queue: Array = []                # 成就水晶的加入顺序（FIFO），达挑战2后限 30 个
+const BOTTLE_CAP := 30                         # 挑战2起水瓶最多 30 个，满了剔除最早的
 var _centered_cache: Dictionary = {}          # path -> 居中归一化后的 ArrayMesh 缓存
 var _centered_h: Dictionary = {}              # path -> 归一化后 Y 半高（用于贴桌面）
 
@@ -170,7 +172,7 @@ func _ready() -> void:
 func _save_state() -> void:
 	var f := FileAccess.open(SAVE_STATE, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"night": _night, "counts": _counts, "challenge": _challenge}))
+		f.store_string(JSON.stringify({"night": _night, "queue": _crystal_queue, "challenge": _challenge}))
 		f.close()
 
 func _load_prefs() -> void:
@@ -180,17 +182,26 @@ func _load_prefs() -> void:
 	if cfg is Dictionary:
 		_night = bool(cfg.get("night", false))
 		_challenge = maxi(1, int(cfg.get("challenge", 1)))
-		var cnt = cfg.get("counts", {})
-		if cnt is Dictionary:
-			for p in cnt:
+		_crystal_queue.clear()
+		var q = cfg.get("queue", null)
+		if q is Array:                                    # 新存档：有序队列
+			for p in q:
 				if p in MODELS:
-					_counts[p] = int(cnt[p])
-		# 兼容旧存档：unlocked 数组 → 各计 1 次
-		var ul = cfg.get("unlocked", [])
-		if ul is Array:
-			for p in ul:
-				if p in MODELS and not _counts.has(p):
-					_counts[p] = 1
+					_crystal_queue.append(p)
+		else:                                             # 兼容旧存档：counts 字典 → 队列（顺序任意）
+			var cnt = cfg.get("counts", {})
+			if cnt is Dictionary:
+				for p in cnt:
+					if p in MODELS:
+						for i in int(cnt[p]):
+							_crystal_queue.append(p)
+			var ul = cfg.get("unlocked", [])
+			if ul is Array:
+				for p in ul:
+					if p in MODELS:
+						_crystal_queue.append(p)
+		_enforce_bottle_cap()
+		_recount()
 
 # 按当前 _btn_state 恢复底部按钮显示。
 func _apply_bottom_state() -> void:
@@ -464,7 +475,11 @@ func _on_toggle_up() -> void:
 # 长按 7s 触发：对应模型完成数翻倍（0 则记为 1），然后按新数量重建瓶子。
 func _debug_double_count() -> void:
 	var path := "res://models/chariot.glb" if _night else "res://models/puzzle.glb"
-	_counts[path] = maxi(1, int(_counts.get(path, 0)) * 2)
+	var add := maxi(1, int(_counts.get(path, 0)))   # 0→1，否则再入队一份（翻倍）
+	for i in add:
+		_crystal_queue.append(path)
+	_enforce_bottle_cap()
+	_recount()
 	_sfx_ding.play()                       # 反馈一声
 	_save_state()
 	if _in_room:                           # 按新数量重建瓶子（保住游戏相机）
@@ -485,7 +500,8 @@ func _on_next_up() -> void:
 
 # 长按播放键 7s 触发：清空全部成就并重建（空）瓶子。
 func _debug_clear_counts() -> void:
-	_counts.clear()
+	_crystal_queue.clear()
+	_recount()
 	_sfx_ding.play()                       # 反馈一声
 	_save_state()
 	if _in_room:                           # 重建空瓶（保住游戏相机）
@@ -555,10 +571,25 @@ func _challenge_target() -> int:
 	return int(CHALLENGE_TARGETS[mini(_challenge - 1, CHALLENGE_TARGETS.size() - 1)])
 
 func _total_crystals() -> int:
-	var t := 0
-	for k in _counts:
-		t += int(_counts[k])
-	return t
+	return _crystal_queue.size()
+
+# 由有序队列重建 _counts（供瓶内渲染/进度用）。
+func _recount() -> void:
+	_counts.clear()
+	for p in _crystal_queue:
+		_counts[p] = int(_counts.get(p, 0)) + 1
+
+# 达挑战2起限 30 个：超出则从队首（最早）剔除。
+func _enforce_bottle_cap() -> void:
+	if _challenge >= 2:
+		while _crystal_queue.size() > BOTTLE_CAP:
+			_crystal_queue.pop_front()
+
+# 新增一个成就水晶（入队 + 满则剔除最早 + 重算）。
+func _add_crystal(path: String) -> void:
+	_crystal_queue.append(path)
+	_enforce_bottle_cap()
+	_recount()
 
 func _show_room_progress(on: bool) -> void:
 	# 不显示进度条/数字（仅保留达标完成圆圈逻辑）。
@@ -642,8 +673,9 @@ func _on_video_finished() -> void:
 func _finish_challenge() -> void:
 	if _challenge < CHALLENGE_TARGETS.size():
 		_challenge += 1                        # 进入下一挑战（如 x/30）
-	_counts.clear()                            # 完成后清空成就水晶，保留 1 个（不清到 0）
-	_counts[MODELS[0]] = 1
+	# 不再清空水晶：保持数量。挑战2起限 30 个（新增时剔除最早的）。
+	_enforce_bottle_cap()
+	_recount()
 	_room_circle_lock = false
 	_room_circle_shown = false
 	if _room_circle_btn != null:
@@ -921,7 +953,7 @@ func _enter_delivered() -> void:
 	_washing = false
 	_sfx_water.stop()
 	_sfx_reward.play()
-	_counts[_model_path] = int(_counts.get(_model_path, 0)) + 1   # 完成次数 +1
+	_add_crystal(_model_path)                       # 入队（挑战2起满 30 则剔除最早的）
 	_save_state()
 	# 圆圈变对勾并锁定，1 秒后对勾渐隐 → 双按钮渐现。
 	_circle_btn.icon = load("res://textures/icon_check.png")
