@@ -878,7 +878,7 @@ func _open_room() -> void:
 	_room_R = pack_r + disp * 0.7                                # 瓶身球半径
 	_room_neck_r = _model_room_radius("res://models/chariot.glb") * 1.1   # 细口=车柱体半径×1.1
 	_room_top = _room_R * 1.9                                    # 瓶口 y（瓶底 = -R）
-	_room_wall = minf(_room_R * 0.05, _room_neck_r * 0.4)        # 瓶壁厚度
+	_room_wall = 0.0                                            # 瓶壁厚度=0（单层壁）
 	# 水晶容纳球：内壁(R-壁厚) 再退一个水晶半径(≈0.6·disp)，中心不越界 → 网格不穿壁。
 	_room_body_r = minf(_room_R * 0.8, _room_R - _room_wall - disp * 0.6)
 	_room_cy = 0.0                                               # 瓶身球心=原点
