@@ -825,7 +825,6 @@ func _open_room() -> void:
 	plane.mesh = pmesh
 	var pmat := ShaderMaterial.new()
 	pmat.shader = _make_light_plane_shader()
-	pmat.set_shader_parameter("cell", cell)
 	pmat.set_shader_parameter("board", board)
 	plane.material_override = pmat
 	_room_root.add_child(plane)
@@ -1080,31 +1079,25 @@ void fragment() {
 """
 	return sh
 
-# 透明水晶棋盘格（代替桌板）：黑白格 + 发光格线，半透明泛蓝，边缘淡出。
+# 透明水晶板（代替桌板）：半透明泛蓝玻璃质感，中心微微内发光，边缘淡出。
 func _make_light_plane_shader() -> Shader:
 	var sh := Shader.new()
 	sh.code = """
 shader_type spatial;
 render_mode cull_disabled, blend_mix, depth_draw_never, specular_schlick_ggx;
-uniform vec3 tint : source_color = vec3(0.35, 0.6, 1.0);
-uniform float cell = 2.2;
+uniform vec3 tint : source_color = vec3(0.32, 0.56, 1.0);
 uniform float board = 40.0;
 varying vec3 wpos;
 void vertex() { wpos = VERTEX; }        // PlaneMesh 在原点无缩放 → 局部即世界 XZ
 void fragment() {
-	vec2 uv = wpos.xz / cell;
-	vec2 gi = floor(uv);
-	float chk = mod(gi.x + gi.y, 2.0);            // 0/1 交替格
-	vec2 f = abs(fract(uv) - 0.5);
-	float edge = max(f.x, f.y);
-	float line = smoothstep(0.44, 0.5, edge);     // 格线
 	float d = length(wpos.xz);
-	float fade = smoothstep(board * 0.5, board * 0.32, d);  // 边缘淡出
+	float fade = smoothstep(board * 0.5, board * 0.30, d);  // 边缘淡出
 	ALBEDO = tint;
-	METALLIC = 0.0;
-	ROUGHNESS = 0.08;
-	EMISSION = tint * (0.12 + 0.35 * chk + line * 0.9);
-	ALPHA = clamp((mix(0.10, 0.30, chk) + line * 0.5) * fade, 0.0, 1.0);
+	METALLIC = 0.2;
+	ROUGHNESS = 0.06;
+	SPECULAR = 0.9;
+	EMISSION = tint * 0.18;                        // 淡淡内发光
+	ALPHA = 0.22 * fade;                           // 半透明水晶
 }
 """
 	return sh
