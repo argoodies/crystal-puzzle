@@ -899,6 +899,7 @@ func _open_room() -> void:
 			continue
 		_room_root.add_child(_build_room_multimesh(path, cnt, g, inner_r, y_lo, y_hi))
 		g += cnt
+	_room_moving = true                             # 开场即开始下沉/沉底
 	# 相机距离随瓶大小自适应。
 	_room_dist = clampf(jar_r * 2.6 + jar_h * 0.6, 16.0, 150.0)
 	_update_room_cam()
@@ -1038,7 +1039,8 @@ func _room_input(event: InputEvent) -> void:
 # 物理模拟：涟漪波前经过 → 给冲量；每帧积分位置，水阻力(阻尼)减速，限制在瓶内。
 func _room_sim(delta: float) -> void:
 	var FORCE := 14.0                                 # 冲量强度
-	var DRAG := exp(-1.8 * delta)                     # 水阻力（每帧速度衰减）
+	var DRAG := exp(-0.9 * delta)                     # 水阻力（减小 → 漂得更久）
+	var GRAV := 2.2                                   # 重力：最终沉底
 	var moving := false
 	for entry in _room_mmis:
 		var node: MultiMeshInstance3D = entry.get("node")
@@ -1067,6 +1069,7 @@ func _room_sim(delta: float) -> void:
 						dv = Vector3.UP
 					v += (dv.normalized() * 0.85 + Vector3.UP * 0.35) * (pulse * FORCE * delta)
 			v *= DRAG                                 # 水阻力减速
+			v.y -= GRAV * delta                       # 重力下沉
 			p += v * delta
 			# 限制在瓶内：出半径就贴壁并去掉外向速度；出上下界同理。
 			var rxz := Vector2(p.x, p.z)
