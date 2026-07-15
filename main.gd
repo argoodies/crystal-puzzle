@@ -1123,8 +1123,9 @@ func _build_room_multimesh(path: String, count: int, start_g: int) -> MultiMeshI
 
 func _update_room_cam() -> void:
 	# 只绕竖直轴旋转：固定俯角 ROOM_ELEV，方位角 _room_yaw 决定绕 Y 环绕位置。
-	# 注视点略上抬，让远端瓶口探进画面上缘一点。
-	var center := Vector3(0.0, _room_cy + _room_R * 0.35, 0.0)
+	# 注视点=瓶子竖直中心（瓶底 -R 到颈口 _room_top 的中点），缩放沿固定 30° 视线纯推拉，
+	# 瓶子始终居中，缩放不改变俯视角/构图。
+	var center := Vector3(0.0, (-_room_R + _room_top) * 0.5, 0.0)
 	var ce := cos(ROOM_ELEV)
 	var offset := Vector3(ce * sin(_room_yaw), sin(ROOM_ELEV), ce * cos(_room_yaw)) * _room_dist
 	_camera.transform = Transform3D.IDENTITY.looking_at(-offset, Vector3.UP)
