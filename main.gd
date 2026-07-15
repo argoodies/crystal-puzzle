@@ -87,6 +87,8 @@ var _room_touches: Dictionary = {}              # 空间内多点触摸（拖拽
 var _room_pinch := 0.0                           # 上一帧双指间距
 var _room_yaw_vel := 0.0                         # 松手后惯性角速度（弧度/秒）
 var _room_pitch_vel := 0.0
+var _room_grab_mmi: MultiMeshInstance3D          # 正在拖动的水晶所属 MultiMesh
+var _room_grab_idx := -1                          # 正在拖动的实例索引
 var _cam_saved := Transform3D.IDENTITY
 var _counts: Dictionary = {}                  # 模型 path -> 完成(交付)次数
 var _centered_cache: Dictionary = {}          # path -> 居中归一化后的 ArrayMesh 缓存
@@ -854,6 +856,7 @@ func _close_room() -> void:
 	_camera.transform = _cam_saved
 	_touches.clear()
 	_room_touches.clear()
+	_room_release()
 
 # 归一化+居中后的 ArrayMesh（顶点减去中心、乘缩放），供 MultiMesh 复用；同时缓存半高。
 func _centered_mesh(path: String) -> ArrayMesh:
@@ -921,15 +924,23 @@ func _room_input(event: InputEvent) -> void:
 			_room_touches[event.index] = event.position
 			_room_yaw_vel = 0.0                       # 抓住时停止惯性
 			_room_pitch_vel = 0.0
+			if _room_touches.size() == 1:
+				_room_pick(event.position)            # 单指落在水晶上 → 拿起它
 		else:
 			_room_touches.erase(event.index)
+			if _room_touches.size() == 0:
+				_room_release()
 		if _room_touches.size() == 2:
+			_room_release()                           # 双指改缩放，放下水晶
 			_room_pinch = _room_two_dist()
 	elif event is InputEventScreenDrag:
 		if _room_touches.has(event.index):
 			_room_touches[event.index] = event.position
 		if _room_touches.size() == 1:
-			_room_orbit(event.relative)
+			if _room_grab_idx >= 0:
+				_room_move(event.position)            # 拖动水晶
+			else:
+				_room_orbit(event.relative)           # 拖动空白 → 旋转视角
 		elif _room_touches.size() == 2:
 			var d := _room_two_dist()
 			if _room_pinch > 0.0:
@@ -941,13 +952,67 @@ func _room_input(event: InputEvent) -> void:
 			if event.pressed:
 				_room_yaw_vel = 0.0
 				_room_pitch_vel = 0.0
+				_room_pick(event.position)
+			else:
+				_room_release()
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			_room_zoom(40.0)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
 			_room_zoom(-40.0)
 	elif event is InputEventMouseMotion:
 		if _room_dragging:
-			_room_orbit((event as InputEventMouseMotion).relative)
+			if _room_grab_idx >= 0:
+				_room_move((event as InputEventMouseMotion).position)
+			else:
+				_room_orbit((event as InputEventMouseMotion).relative)
+
+const ROOM_PICK_R := 1.4                          # 拾取阈值（世界半径）
+
+# 射线拾取离视线最近的水晶实例；命中则记为"拿起"。
+func _room_pick(pos: Vector2) -> void:
+	_room_grab_mmi = null
+	_room_grab_idx = -1
+	if _room_root == null or not is_instance_valid(_room_root):
+		return
+	var from := _camera.project_ray_origin(pos)
+	var dir := _camera.project_ray_normal(pos)
+	var best_t := INF
+	for child in _room_root.get_children():
+		if not (child is MultiMeshInstance3D):
+			continue
+		var mm: MultiMesh = (child as MultiMeshInstance3D).multimesh
+		for i in mm.instance_count:
+			var o := mm.get_instance_transform(i).origin
+			var t: float = (o - from).dot(dir)
+			if t < 0.1:
+				continue
+			var perp := (from + dir * t).distance_to(o)
+			if perp < ROOM_PICK_R and t < best_t:
+				best_t = t
+				_room_grab_mmi = child
+				_room_grab_idx = i
+
+func _room_release() -> void:
+	_room_grab_mmi = null
+	_room_grab_idx = -1
+
+# 把拿起的水晶沿桌面(其所在高度水平面)移到手指处，限制在桌板内。
+func _room_move(pos: Vector2) -> void:
+	if _room_grab_idx < 0 or _room_grab_mmi == null or not is_instance_valid(_room_grab_mmi):
+		return
+	var mm: MultiMesh = _room_grab_mmi.multimesh
+	var xf := mm.get_instance_transform(_room_grab_idx)
+	var from := _camera.project_ray_origin(pos)
+	var dir := _camera.project_ray_normal(pos)
+	if absf(dir.y) < 0.0001:
+		return
+	var t := (xf.origin.y - from.y) / dir.y          # 与该高度水平面求交
+	if t < 0.0:
+		return
+	var hit := from + dir * t
+	var lim := BOARD_LEN * 0.5 - 1.0
+	var np := Vector3(clampf(hit.x, -lim, lim), xf.origin.y, clampf(hit.z, -lim, lim))
+	mm.set_instance_transform(_room_grab_idx, Transform3D(xf.basis, np))
 
 func _room_two_dist() -> float:
 	var pts := _room_touches.values()
