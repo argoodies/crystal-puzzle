@@ -900,13 +900,9 @@ func _open_room() -> void:
 	_room_rips.clear()
 	for i in MAX_RIP:
 		_room_rips.append(Vector4(0.0, 0.0, 0.0, -1.0))   # w=start<0 → 未激活
-	# 按完成总数决定瓶身球半径（水晶 3D 悬浮堆 → 圆瓶身）。
-	var total := 0
-	for path in MODELS:
-		total += mini(int(_counts.get(path, 0)), ROOM_CAP)
+	# 瓶身球半径固定，不随内部水晶数量变化（数量多则挤得更密）。
 	var disp := TARGET_W * TABLE_DISP
-	var pack_r := disp * 0.95 * pow(float(maxi(total, 1)), 1.0 / 3.0)
-	_room_R = pack_r + disp * 0.7                                # 瓶身球半径
+	_room_R = disp * 3.5                                         # 瓶身球半径（固定）
 	_room_neck_r = _model_room_radius("res://models/chariot.glb") * 1.1   # 细口=车柱体半径×1.1
 	_room_top = _room_R * 1.9                                    # 瓶口 y（瓶底 = -R）
 	_room_wall = 0.0                                            # 瓶壁厚度=0（单层壁）
