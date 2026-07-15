@@ -931,7 +931,7 @@ func _open_room() -> void:
 	_room_R = disp * 3.5                                         # 瓶身球半径（固定）
 	# 仿照 round-bottom 烧瓶母线的程序化比例（颈≈0.32R、颈口≈2.29R、带卷唇）。
 	_room_neck_r = _room_R * (0.098 / 0.31)                      # 颈半径 ≈ 0.32R
-	_room_top = _room_R * ((0.49 + 0.221) / 0.31)              # 颈口 y
+	_room_top = _room_R * 1.7                                   # 颈口 y（短颈）
 	_room_wall = minf(_room_R * 0.025, _room_neck_r * 0.3)     # 薄玻璃壁
 	# 水晶容纳球：瓶身球(R) 再退一个水晶半径(≈0.6·disp)，网格不穿壁。
 	_room_body_r = minf(_room_R * 0.8, _room_R - disp * 0.6)
