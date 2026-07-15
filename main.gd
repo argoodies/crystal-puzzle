@@ -862,36 +862,14 @@ func _open_room() -> void:
 	_room_mmis.clear()
 	_room_moving = false
 
-	# 瓶子（透明水晶玻璃壳）。
-	var jar := MeshInstance3D.new()
-	var jm := CylinderMesh.new()
-	jm.top_radius = jar_r; jm.bottom_radius = jar_r; jm.height = jar_h; jm.radial_segments = 56
-	jar.mesh = jm
-	var jmat := ShaderMaterial.new(); jmat.shader = _make_jar_shader()
-	jar.material_override = jmat
-	_room_root.add_child(jar)
-	# 水体（瓶内充满水：半透明蓝的圆柱，从瓶底到水面）。
-	var wbody := MeshInstance3D.new()
-	var wm := CylinderMesh.new()
-	var wh := water_top - (-jar_h * 0.5)
-	wm.top_radius = _room_water_r; wm.bottom_radius = _room_water_r; wm.height = wh; wm.radial_segments = 56
-	wbody.mesh = wm
-	wbody.position.y = -jar_h * 0.5 + wh * 0.5
-	_room_waterbody_mat = ShaderMaterial.new(); _room_waterbody_mat.shader = _make_water_body_shader()
-	_room_waterbody_mat.set_shader_parameter("burst", jar_r * 1.15)
-	wbody.material_override = _room_waterbody_mat
-	_room_root.add_child(wbody)
-	# 水面（可涟漪的圆盘）。
-	var surf := MeshInstance3D.new()
-	var sm := PlaneMesh.new()
-	sm.size = Vector2(jar_r * 2.05, jar_r * 2.05)
-	surf.mesh = sm; surf.position.y = water_top
-	_room_water_mat = ShaderMaterial.new(); _room_water_mat.shader = _make_water_surface_shader()
-	_room_water_mat.set_shader_parameter("radius", _room_water_r)
-	_room_water_mat.set_shader_parameter("burst", jar_r * 1.15)
-	surf.material_override = _room_water_mat
-	_room_root.add_child(surf)
-	# 灯光：瓶顶上方俯照 + 中心补光。
+	# 没有瓶子/水面/水体网格了：整个成就空间就在水中，靠环境水色 + 水下雾表现。
+	_room_water_mat = null
+	_room_waterbody_mat = null
+	_env.background_color = Color(0.02, 0.10, 0.24)   # 深水蓝背景
+	_env.fog_enabled = true
+	_env.fog_light_color = Color(0.10, 0.32, 0.6)
+	_env.fog_density = 0.02
+	# 灯光：上方俯照 + 中心补光。
 	var top := SpotLight3D.new()
 	top.position = Vector3(0, jar_h * 0.5 + 12.0, 0)
 	top.rotation = Vector3(-PI * 0.5, 0, 0)
@@ -949,6 +927,8 @@ func _close_room() -> void:
 	if _room_root != null and is_instance_valid(_room_root):
 		_room_root.queue_free()
 		_room_root = null
+	_env.fog_enabled = false                          # 恢复主游戏环境（黑底、无雾）
+	_apply_lighting(false)
 	_world.visible = true
 	_spray_fx.visible = true
 	_toggle_btn.visible = true
