@@ -61,6 +61,7 @@ var _godray_layer: CanvasLayer
 var _spray_fx: CPUParticles3D             # 喷水水花粒子
 var _droplet_mat: StandardMaterial3D      # 水珠共享材质（松手时整体淡出）
 var _fade_tween: Tween                     # 松手后整体淡出的 tween
+var _spray_faded := false                  # 擦拭中拖到背景已渐隐（回到模型上再恢复）
 const DROP_ALPHA := 0.2                     # 水珠透明度
 var _wash_hitting := false                 # 正在擦拭且射线命中了模型
 var _moved := false                         # 本帧手指是否移动：移动才喷水珠
@@ -1654,12 +1655,27 @@ func _process(delta: float) -> void:
 		return                                # 旋转 4 周动画期间由 tween 接管
 	if _washing:
 		_spray(_wash_screen)                 # 更新 _wash_hitting
-		if not _sfx_water.playing:
-			_sfx_water.play()
-		_cov_tick += 1
-		if _cov_tick >= 12:                        # 节流：约每 12 帧查一次覆盖率
-			_cov_tick = 0
-			_check_coverage()
+		if _wash_hitting:
+			if _spray_faded:                       # 手指从背景移回模型 → 恢复喷水
+				if _fade_tween != null and _fade_tween.is_valid():
+					_fade_tween.kill()
+				var c := _droplet_mat.albedo_color
+				c.a = DROP_ALPHA
+				_droplet_mat.albedo_color = c
+				_spray_faded = false
+			if not _sfx_water.playing:
+				_sfx_water.play()
+			_cov_tick += 1
+			if _cov_tick >= 12:                    # 节流：约每 12 帧查一次覆盖率
+				_cov_tick = 0
+				_check_coverage()
+		elif not _spray_faded:                     # 擦拭中拖到背景 → 像松手一样渐隐
+			_spray_faded = true
+			_sfx_water.stop()
+			if _fade_tween != null and _fade_tween.is_valid():
+				_fade_tween.kill()
+			_fade_tween = create_tween()
+			_fade_tween.tween_property(_droplet_mat, "albedo_color:a", 0.0, 0.4)
 	else:
 		_wash_hitting = false
 	# 只在"擦拭中 + 命中模型 + 本帧手指移动"时喷水珠：停下/松手就不再生成，避免叠加变亮。
@@ -1690,6 +1706,7 @@ func _process(delta: float) -> void:
 func _set_washing(on: bool, pos: Vector2) -> void:
 	if on and not _washing:
 		_washing = true
+		_spray_faded = false               # 新一笔擦拭：清背景渐隐态
 		_idle_time = 0.0
 		_fade_out_intro_btns()             # 首次擦拭 → 右上按钮淡出
 		_wash_screen = pos
