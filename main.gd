@@ -1058,7 +1058,8 @@ func _room_sim(delta: float) -> void:
 			v *= DRAG                                 # 水阻力减速
 			v.y -= GRAV * delta                       # 重力下沉
 			p += v * delta
-			# 限制在瓶内：出半径就贴壁并去掉外向速度；出上下界同理。
+			# 限制在瓶内：撞壁反弹（带回弹系数，能量损失后终会沉底）。
+			var REST := 0.6
 			var rxz := Vector2(p.x, p.z)
 			if rxz.length() > _room_inner_r:
 				rxz = rxz.normalized() * _room_inner_r
@@ -1066,13 +1067,15 @@ func _room_sim(delta: float) -> void:
 				var n := Vector3(rxz.x, 0.0, rxz.y).normalized()
 				var vn := v.dot(n)
 				if vn > 0.0:
-					v -= n * vn
+					v -= n * (1.0 + REST) * vn        # 反射外向分量
 			if p.y < _room_y_lo:
 				p.y = _room_y_lo
-				v.y = maxf(v.y, 0.0)
+				if v.y < 0.0:
+					v.y = -v.y * REST                 # 撞底反弹
 			elif p.y > _room_y_hi:
 				p.y = _room_y_hi
-				v.y = minf(v.y, 0.0)
+				if v.y > 0.0:
+					v.y = -v.y * REST                 # 撞顶反弹
 			pos[i] = p
 			vel[i] = v
 			mm.set_instance_transform(i, Transform3D(mm.get_instance_transform(i).basis, p))
