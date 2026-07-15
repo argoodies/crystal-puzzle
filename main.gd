@@ -1134,20 +1134,16 @@ func _room_sim(delta: float) -> void:
 			moving = true                              # 有气泡仍在动 → 继续模拟
 	_room_moving = moving
 
-# 相机射线在 XZ 上是否穿过瓶柱（半径 _room_jar_r）→ 判断触点是否落在瓶上。
+# 相机射线是否真正打到圆瓶身球（否则瓶外背景 → 旋转，不冲击）。
 func _ray_hits_jar(pos: Vector2) -> bool:
 	var from := _camera.project_ray_origin(pos)
 	var dir := _camera.project_ray_normal(pos)
-	var o2 := Vector2(from.x, from.z)
-	var d2 := Vector2(dir.x, dir.z)
-	if d2.length() < 0.0001:
-		return o2.length() < _room_jar_r          # 近乎垂直俯视
-	d2 = d2.normalized()
-	var proj := (-o2).dot(d2)
-	if proj <= 0.0:
-		return false                              # 射线背离瓶子
-	var closest := o2 + d2 * proj
-	return closest.length() < _room_jar_r
+	var oc := from - Vector3(0.0, _room_cy, 0.0)   # 球心=(0,_room_cy,0)
+	var b := oc.dot(dir)
+	var disc := b * b - (oc.dot(oc) - _room_R * _room_R)
+	if disc < 0.0:
+		return false                               # 射线未与瓶身球相交
+	return (-b + sqrt(disc)) >= 0.0                # 交点在相机前方
 
 # 点击处投射到水中一点，产生"一片冲击"：对该处一定范围内的水晶施加即时爆发冲量。
 func _room_impact(pos: Vector2) -> void:
