@@ -124,6 +124,7 @@ var _room_top := 15.0                              # 瓶口 y
 var _room_body_r := 6.4                            # 水晶容纳球半径（贴瓶身内）
 var _room_wall := 0.4                              # 瓶壁厚度（约束时减去，防穿模）
 var _room_cr := 1.0                                # 水晶碰撞球半径
+var _room_cm := 1.0                                # 水晶容纳边距（贴壁/水面时退让）
 var _room_ripple := 0.0                            # 水面涟漪当前幅度（平滑跟随气泡数）
 # 调试暗门：成就页面长按左上角 7s → 对应水晶数量翻倍（日光=拼图 / 月光=战车）。
 var _toggle_press_t := -1.0                        # 左上角按住计时（<0=未按）
@@ -1108,6 +1109,7 @@ func _open_room() -> void:
 	# 水晶容纳球：瓶身球(R) 再退一个水晶半径(≈0.6·disp)，网格不穿壁。
 	_room_body_r = minf(_room_R * 0.8, _room_R - disp * 0.6)
 	_room_cr = disp * 0.45                                       # 水晶碰撞半径
+	_room_cm = disp * 0.6                                        # 水晶容纳边距
 	_room_cy = 0.0                                               # 瓶身球心=原点
 	var neck_base := _room_R * 1.05                              # 肩颈交界高度
 	_room_water_top = neck_base + 0.5 * (_room_top - neck_base)  # 水到瓶颈 50% 高度
@@ -1375,15 +1377,28 @@ func _room_sim(delta: float) -> void:
 			v *= DRAG                                 # 水阻力减速
 			v.y -= GRAV * delta                       # 重力下沉
 			p += v * delta
-			# 限制在瓶身球内：撞球壁反弹（能量损失后终会沉到球底）。
+			# 约束在瓶内：横向贴瓶壁母线(可沿颈上升)，竖直不越过瓶颈水面、不穿底；撞壁反弹。
 			var REST := 0.85
-			var pl := p.length()
-			if pl > _room_body_r:
-				var n := p / pl
-				p = n * _room_body_r
-				var vn := v.dot(n)
+			var y_hi := _room_water_top - _room_cm     # 顶：不越过瓶颈水面
+			var y_lo := -_room_R + _room_cm            # 底：不穿瓶底
+			if p.y > y_hi:
+				p.y = y_hi
+				if v.y > 0.0:
+					v.y = -v.y * REST
+			elif p.y < y_lo:
+				p.y = y_lo
+				if v.y < 0.0:
+					v.y = -v.y * REST
+			var maxr := maxf(0.0, _bottle_radius(p.y) - _room_cm)   # 该高度处瓶内可用半径
+			var hxz := Vector2(p.x, p.z)
+			var hl := hxz.length()
+			if hl > maxr and hl > 0.0001:
+				var hn := hxz / hl
+				p.x = hn.x * maxr; p.z = hn.y * maxr
+				var vn := v.x * hn.x + v.z * hn.y
 				if vn > 0.0:
-					v -= n * (1.0 + REST) * vn        # 反射外向分量
+					v.x -= hn.x * (1.0 + REST) * vn
+					v.z -= hn.y * (1.0 + REST) * vn
 			pos[i] = p
 			vel[i] = v
 			# 冲击自旋：绕角速度轴转动 basis，之后衰减（shader 的慢自转仍叠加其上）。
@@ -1436,6 +1451,16 @@ func _room_sim(delta: float) -> void:
 			_bubble_mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * sc), bp))
 			moving = true                              # 有气泡仍在动 → 继续模拟
 	_room_moving = moving
+
+# 把位置夹回瓶内：竖直限在[瓶底, 瓶颈水面]，横向贴瓶壁母线（可进颈，不越水面）。
+func _room_clamp_pos(p: Vector3) -> Vector3:
+	p.y = clampf(p.y, -_room_R + _room_cm, _room_water_top - _room_cm)
+	var maxr := maxf(0.0, _bottle_radius(p.y) - _room_cm)
+	var hxz := Vector2(p.x, p.z)
+	if hxz.length() > maxr:
+		hxz = hxz.normalized() * maxr
+		p.x = hxz.x; p.z = hxz.y
+	return p
 
 # 水晶两两碰撞：均匀网格加速 + 冲量分离；碰撞后重新贴回瓶内。返回是否有碰撞发生。
 func _room_collide() -> bool:
@@ -1508,9 +1533,7 @@ func _room_collide() -> bool:
 		var pos: PackedVector3Array = entry.get("pos")
 		var vel: PackedVector3Array = entry.get("vel")
 		for i in pos.size():
-			var p := gpos[k2]
-			if p.length() > _room_body_r:                        # 碰撞可能把它挤出球壁 → 夹回
-				p = p.normalized() * _room_body_r
+			var p := _room_clamp_pos(gpos[k2])                   # 碰撞后夹回瓶内（含颈/水面）
 			pos[i] = p
 			vel[i] = gvel[k2]
 			var basis := mm.get_instance_transform(i).basis
