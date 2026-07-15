@@ -1429,25 +1429,25 @@ shader_type spatial;
 render_mode cull_disabled, blend_mix, depth_draw_never, specular_schlick_ggx;
 uniform vec3 wtint : source_color = vec3(0.2, 0.45, 0.9);
 uniform float rtime = 0.0;
-uniform float ripple = 0.0;        // 涟漪幅度（有气泡时增大，0=静止）
+uniform float ripple = 0.0;        // 闪光强度（有气泡时增大，0=不闪）
 uniform float water_y = 0.0;       // 水面 y
 uniform float band = 1.0;          // 水面往下多少内算"表面"
-uniform float wscale = 1.0;        // 波长基准（≈1/瓶半径）
+uniform float wscale = 1.0;        // 密度基准（≈1/瓶半径）
 varying vec3 lpos;
 void vertex() { lpos = VERTEX; }
 void fragment() {
 	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 2.0);
-	// 仅水面附近起涟漪：同心波（片元级，稀疏顶点也能显现）。
+	// 仅水面附近闪闪光：位置伪随机点，随时间明灭（无涟漪、无形变）。
 	float top_f = smoothstep(water_y - band, water_y, lpos.y);
-	float r = length(lpos.xz) * wscale;
-	float wave = sin(r * 6.0 - rtime * 4.0) * 0.5 + sin(r * 11.0 + rtime * 2.5) * 0.5;
-	float rip = ripple * top_f * wave;
+	vec2 cell = floor(lpos.xz * wscale * 16.0);
+	float h = fract(sin(dot(cell, vec2(41.3, 289.1))) * 43758.5453);
+	float tw = pow(max(sin(rtime * 3.2 + h * 6.2831), 0.0), 8.0);   // 尖锐明灭
+	float spark = ripple * top_f * tw * (0.4 + 0.6 * h);
 	ALBEDO = wtint;
 	ROUGHNESS = 0.06;
 	SPECULAR = 0.8;
-	NORMAL = normalize(NORMAL + vec3(rip * 0.6, 0.0, rip * 0.6));   // 高光随波闪动
-	EMISSION = wtint * (0.08 + 0.5 * max(rip, 0.0));               // 波峰更亮
-	ALPHA = clamp(mix(0.06, 0.2, fres) + 0.15 * max(rip, 0.0), 0.0, 0.5);
+	EMISSION = wtint * 0.08 + vec3(0.7, 0.85, 1.0) * spark * 1.2;   // 闪点偏白亮
+	ALPHA = clamp(mix(0.06, 0.2, fres) + 0.25 * spark, 0.0, 0.6);
 }
 """
 	return sh
