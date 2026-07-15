@@ -592,7 +592,7 @@ func _on_room_circle() -> void:
 		return
 	_room_circle_lock = true
 	_sfx_reward.play()                         # 完成音乐
-	_room_circle_btn.icon = load("res://textures/icon_check.png")   # 变对勾
+	_room_circle_btn.icon = load("res://textures/icon_eye.png")   # 变全视之眼
 	_room_circle_btn.modulate.a = 1.0
 	var tw := create_tween()
 	tw.tween_interval(0.9)
