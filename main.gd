@@ -74,8 +74,8 @@ const TABLE_SPACING := 2.6                      # 桌面上模型的密堆积间
 const TABLE_DISP := 0.55                        # 模型在桌上的显示缩放（相对 TARGET_W）
 const BOARD_LEN := 40.0                         # 桌板长边（约拼图的 20 倍，拼图桌上显示 ~2 单位）
 const ROOM_CENTER_Y := 2.0                      # 相机注视点高度（桌面之上）
-const ELEV_MIN := 1.047                         # 相机仰角下限 60°（桌板倾斜≤30°）
-const ELEV_MAX := 1.536                         # 相机仰角上限 ~88°（近俯视）
+const ELEV_MIN := -1.52                          # 相机仰角自由（仅避开两极万向锁）
+const ELEV_MAX := 1.52
 var _map_btn: Button
 var _in_room := false
 var _room_root: Node3D                        # 成就空间根
@@ -809,25 +809,25 @@ func _open_room() -> void:
 		_room_root.queue_free()
 	_room_root = Node3D.new()
 	add_child(_room_root)
-	# 大桌板（木质），平面朝上，顶面对齐 y=0，模型都放在上面。
-	var plank := (load("res://models/plank.glb") as PackedScene).instantiate()
-	var pm := _find_mesh(plank)
-	if pm != null:
-		var pab := pm.get_aabb()
-		var s := BOARD_LEN / maxf(pab.size.x, pab.size.z)      # 按长边放大到 BOARD_LEN
-		plank.scale = Vector3(s, s, s)
-		plank.position = Vector3(0, -(pab.position.y + pab.size.y) * s, 0)   # 顶面到 y=0
-	_room_root.add_child(plank)
-	# 桌板正上方一盏聚光把整桌打亮 + 一点冷色补光。
+	# 发光平面（代替桌板）：一块朝上的发光圆盘，边缘淡出，像一层光的地面。
+	var plane := MeshInstance3D.new()
+	var pmesh := PlaneMesh.new()
+	pmesh.size = Vector2(BOARD_LEN, BOARD_LEN)
+	plane.mesh = pmesh
+	var pmat := ShaderMaterial.new()
+	pmat.shader = _make_light_plane_shader()
+	plane.material_override = pmat
+	_room_root.add_child(plane)
+	# 真实灯光照亮水晶：高处俯照 + 冷色补光。
 	var top := SpotLight3D.new()
-	top.position = Vector3(0, 36, 0)                            # 高处俯照，覆盖大部分桌面
+	top.position = Vector3(0, 36, 0)
 	top.rotation = Vector3(-PI * 0.5, 0, 0)                     # 朝下
 	top.light_energy = 14.0; top.spot_range = 90.0; top.spot_angle = 42.0
-	top.light_color = Color(1.0, 0.96, 0.9); top.shadow_enabled = false
+	top.light_color = Color(0.85, 0.92, 1.0); top.shadow_enabled = false
 	_room_root.add_child(top)
 	var fill := OmniLight3D.new()
-	fill.position = Vector3(-20, 14, -16); fill.light_energy = 1.6; fill.omni_range = 120.0
-	fill.light_color = Color(0.55, 0.65, 1.0); fill.shadow_enabled = false
+	fill.position = Vector3(0, 3, 0); fill.light_energy = 3.0; fill.omni_range = BOARD_LEN
+	fill.light_color = Color(0.5, 0.65, 1.0); fill.shadow_enabled = false
 	_room_root.add_child(fill)
 	# 每种"完成过"的模型 → 一个 MultiMeshInstance3D，平铺在桌面上。
 	var seed_i := 0
@@ -1058,6 +1058,23 @@ void fragment() {
 	ROUGHNESS = 0.12;
 	SPECULAR = 0.9;
 	EMISSION = tint * (0.35 + 1.5 * fres);        // 边缘辉光，像发光水晶
+}
+"""
+	return sh
+
+# 发光平面（代替桌板）：不受光的加色发光圆盘，中心亮、边缘淡出。
+func _make_light_plane_shader() -> Shader:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode unshaded, cull_disabled, blend_add, depth_draw_never;
+uniform vec3 glow : source_color = vec3(0.32, 0.55, 1.0);
+void fragment() {
+	float d = length(UV - vec2(0.5)) * 2.0;       // 0 中心 → 1 边缘
+	float a = smoothstep(1.0, 0.15, d);
+	EMISSION = glow * a * 1.6;
+	ALBEDO = vec3(0.0);
+	ALPHA = a;
 }
 """
 	return sh
