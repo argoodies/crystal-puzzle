@@ -106,6 +106,10 @@ var _room_inner_r := 8.0                           # 水晶可达最大半径（
 var _room_y_lo := -4.0
 var _room_y_hi := 4.0
 var _room_burst_r := 5.0                           # 一片冲击的作用半径
+var _room_R := 8.0                                 # 瓶身球半径（圆瓶）
+var _room_neck_r := 2.4                            # 细口半径
+var _room_top := 15.0                              # 瓶口 y
+var _room_body_r := 6.4                            # 水晶容纳球半径（贴瓶身内）
 const BUBBLE_MAX := 180                             # 气泡池容量
 var _bubble_mm: MultiMesh                           # 气泡 MultiMesh
 var _bub_pos: PackedVector3Array
@@ -839,54 +843,54 @@ func _open_room() -> void:
 	_room_rips.clear()
 	for i in MAX_RIP:
 		_room_rips.append(Vector4(0.0, 0.0, 0.0, -1.0))   # w=start<0 → 未激活
-	# 按完成总数决定瓶子尺寸（水晶 3D 悬浮堆半径 → 瓶半径/高度）。
+	# 按完成总数决定瓶身球半径（水晶 3D 悬浮堆 → 圆瓶身）。
 	var total := 0
 	for path in MODELS:
 		total += mini(int(_counts.get(path, 0)), ROOM_CAP)
 	var disp := TARGET_W * TABLE_DISP
-	var pack_r := disp * 0.95 * pow(float(maxi(total, 1)), 1.0 / 3.0)   # 悬浮堆半径
-	var jar_r := pack_r + JAR_MARGIN + disp * 0.5
-	var jar_h := jar_r * 2.3
-	var water_top := jar_h * 0.5 - disp                          # 水面略低于瓶口
-	var inner_r := jar_r * 0.72                                  # 水晶分布最大半径（不贴壁）
-	var y_lo := -jar_h * 0.5 + disp                             # 最低（贴瓶底之上）
-	var y_hi := water_top - disp                                # 最高（浸在水面下）
-	_room_water_r = jar_r * 0.97
-	_room_jar_r = jar_r
-	_room_water_top = water_top
-	_room_cy = (y_lo + y_hi) * 0.5
-	_room_inner_r = inner_r
-	_room_y_lo = y_lo
-	_room_y_hi = y_hi
-	_room_burst_r = jar_r * 1.15
+	var pack_r := disp * 0.95 * pow(float(maxi(total, 1)), 1.0 / 3.0)
+	_room_R = pack_r + disp * 0.7                                # 瓶身球半径
+	_room_neck_r = _room_R * 0.3                                 # 细口
+	_room_top = _room_R * 1.9                                    # 瓶口 y（瓶底 = -R）
+	_room_body_r = _room_R * 0.8                                 # 水晶容纳球
+	_room_cy = 0.0                                               # 瓶身球心=原点
+	_room_water_top = -_room_R + 0.8 * (_room_top + _room_R)     # 水到 80%
+	_room_water_r = _room_R
+	_room_burst_r = _room_R * 1.15
+	_room_water_mat = null                          # 静止水，无涟漪材质
+	_room_waterbody_mat = null
 	_room_mmis.clear()
 	_room_moving = false
 
-	# 没有瓶子/水面/水体网格了：整个成就空间就在水中，靠环境水色 + 水下雾表现。
-	_room_water_mat = null
-	_room_waterbody_mat = null
-	_env.background_color = Color(0.02, 0.10, 0.24)   # 深水蓝背景
-	_env.fog_enabled = true
-	_env.fog_light_color = Color(0.10, 0.32, 0.6)
-	_env.fog_density = 0.002
+	# 细口圆瓶（旋转体）：玻璃壳（开口）+ 内部水体（到 80%，带水面盖）。
+	var glass := MeshInstance3D.new()
+	glass.mesh = _make_bottle_surface(1.0, _room_top, false)
+	var gmat := ShaderMaterial.new(); gmat.shader = _make_jar_shader()
+	glass.material_override = gmat
+	_room_root.add_child(glass)
+	var water := MeshInstance3D.new()
+	water.mesh = _make_bottle_surface(0.96, _room_water_top, true)
+	var wmat := ShaderMaterial.new(); wmat.shader = _make_water_still_shader()
+	water.material_override = wmat
+	_room_root.add_child(water)
 	# 灯光：上方俯照 + 中心补光。
 	var top := SpotLight3D.new()
-	top.position = Vector3(0, jar_h * 0.5 + 12.0, 0)
+	top.position = Vector3(0, _room_top + 8.0, 0)
 	top.rotation = Vector3(-PI * 0.5, 0, 0)
-	top.light_energy = 12.0; top.spot_range = jar_h * 3.0; top.spot_angle = 46.0
+	top.light_energy = 12.0; top.spot_range = _room_R * 8.0; top.spot_angle = 50.0
 	top.light_color = Color(0.85, 0.92, 1.0); top.shadow_enabled = false
 	_room_root.add_child(top)
 	var fill := OmniLight3D.new()
-	fill.position = Vector3(0, _room_cy, 0); fill.light_energy = 3.0; fill.omni_range = jar_r * 4.0
+	fill.position = Vector3.ZERO; fill.light_energy = 3.0; fill.omni_range = _room_R * 6.0
 	fill.light_color = Color(0.5, 0.65, 1.0); fill.shadow_enabled = false
 	_room_root.add_child(fill)
-	# 每种"完成过"的模型 → 一个 MultiMeshInstance3D，悬浮在瓶内水中。
+	# 每种"完成过"的模型 → 一个 MultiMeshInstance3D，悬浮在圆瓶身水中。
 	var g := 0
 	for path in MODELS:
 		var cnt := mini(int(_counts.get(path, 0)), ROOM_CAP)
 		if cnt <= 0:
 			continue
-		_room_root.add_child(_build_room_multimesh(path, cnt, g, inner_r, y_lo, y_hi))
+		_room_root.add_child(_build_room_multimesh(path, cnt, g))
 		g += cnt
 	# 气泡池（自旋水晶周围冒泡上浮）。
 	_bubble_mm = MultiMesh.new()
@@ -911,7 +915,7 @@ func _open_room() -> void:
 		_bubble_mm.set_instance_transform(i, hidden)
 	_room_moving = true                             # 开场即开始下沉/沉底
 	# 相机距离随瓶大小自适应。
-	_room_dist = clampf(jar_r * 2.6 + jar_h * 0.6, 16.0, 150.0)
+	_room_dist = clampf(_room_R * 3.2 + _room_top * 0.5, 16.0, 150.0)
 	_update_room_cam()
 
 func _spawn_bubble(at: Vector3, radius: float) -> void:
@@ -963,7 +967,7 @@ func _centered_mesh(path: String) -> ArrayMesh:
 	_centered_h[path] = halfy
 	return out
 
-func _build_room_multimesh(path: String, count: int, start_g: int, inner_r: float, y_lo: float, y_hi: float) -> MultiMeshInstance3D:
+func _build_room_multimesh(path: String, count: int, start_g: int) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = _centered_mesh(path)
@@ -975,12 +979,13 @@ func _build_room_multimesh(path: String, count: int, start_g: int, inner_r: floa
 	var vels := PackedVector3Array()
 	var avels := PackedVector3Array()
 	for i in count:
-		# 圆柱体内低差异分布：随机方向/高度，限制在瓶内（不出瓶）。
+		# 球体内低差异分布：随机分布在瓶身球内（不出瓶）。
 		var g := float(start_g + i) + 0.5
-		var r := inner_r * sqrt(fposmod(g * 0.7548776662, 1.0))
+		var rr := _room_body_r * pow(fposmod(g * 0.7548776662, 1.0), 1.0 / 3.0)
+		var ct := 1.0 - 2.0 * fposmod(g * 0.5698402910, 1.0)
+		var stt := sqrt(maxf(0.0, 1.0 - ct * ct))
 		var theta := g * GA
-		var y := lerpf(y_lo, y_hi, fposmod(g * 0.5698402910, 1.0))
-		var pos := Vector3(r * cos(theta), y, r * sin(theta))
+		var pos := Vector3(rr * stt * cos(theta), rr * ct, rr * stt * sin(theta))
 		# 随机整体朝向（在水里各朝各方向）+ 统一显示缩放。
 		var ax := Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1), rng.randf_range(-1, 1))
 		if ax.length() < 0.01:
@@ -1079,24 +1084,15 @@ func _room_sim(delta: float) -> void:
 			v *= DRAG                                 # 水阻力减速
 			v.y -= GRAV * delta                       # 重力下沉
 			p += v * delta
-			# 限制在瓶内：撞壁反弹（带回弹系数，能量损失后终会沉底）。
+			# 限制在瓶身球内：撞球壁反弹（能量损失后终会沉到球底）。
 			var REST := 0.85
-			var rxz := Vector2(p.x, p.z)
-			if rxz.length() > _room_inner_r:
-				rxz = rxz.normalized() * _room_inner_r
-				p.x = rxz.x; p.z = rxz.y
-				var n := Vector3(rxz.x, 0.0, rxz.y).normalized()
+			var pl := p.length()
+			if pl > _room_body_r:
+				var n := p / pl
+				p = n * _room_body_r
 				var vn := v.dot(n)
 				if vn > 0.0:
 					v -= n * (1.0 + REST) * vn        # 反射外向分量
-			if p.y < _room_y_lo:
-				p.y = _room_y_lo
-				if v.y < 0.0:
-					v.y = -v.y * REST                 # 撞底反弹
-			elif p.y > _room_y_hi:
-				p.y = _room_y_hi
-				if v.y > 0.0:
-					v.y = -v.y * REST                 # 撞顶反弹
 			pos[i] = p
 			vel[i] = v
 			# 冲击自旋：绕角速度轴转动 basis，之后衰减（shader 的慢自转仍叠加其上）。
@@ -1133,6 +1129,12 @@ func _room_sim(delta: float) -> void:
 				_bub_life[i] = 0.0
 				_bubble_mm.set_instance_transform(i, hidden)
 				continue
+			# 收进瓶身内壁（升到细口时被漏斗状收拢）。
+			var lim := _bottle_radius(bp.y) * 0.85
+			var bxz := Vector2(bp.x, bp.z)
+			if bxz.length() > lim:
+				bxz = bxz.normalized() * lim
+				bp.x = bxz.x; bp.z = bxz.y
 			_bub_vel[i] = bv
 			_bub_pos[i] = bp
 			var fade := clampf(_bub_life[i], 0.0, 1.0)
@@ -1270,6 +1272,73 @@ void fragment() {
 	SPECULAR = 1.0;
 	EMISSION = vec3(0.35, 0.55, 0.95) * fres * 0.6;
 	ALPHA = clamp(0.06 + 0.8 * fres, 0.0, 0.9);   // 中心透、边缘亮
+}
+"""
+	return sh
+
+# 细口圆瓶母线：瓶底=-R 的球身 → 肩部收拢 → 细口直筒。
+func _bottle_radius(y: float) -> float:
+	var R := _room_R
+	var nr := _room_neck_r
+	var body_top := R * 0.72                       # 球身收口高度
+	var neck_start := R * 1.0
+	if y <= body_top:
+		return sqrt(maxf(0.0, R * R - y * y))       # 球身
+	elif y <= neck_start:
+		var r0 := sqrt(maxf(0.0, R * R - body_top * body_top))
+		return lerpf(r0, nr, (y - body_top) / (neck_start - body_top))   # 肩部
+	else:
+		return nr                                   # 细口
+
+# 旋转母线生成瓶面 ArrayMesh（rscale 缩放半径；y 从 -R 到 y_top；cap_top 加水面盖）。
+func _make_bottle_surface(rscale: float, y_top: float, cap_top: bool) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var SEG := 48
+	var RN := 72
+	var y0 := -_room_R
+	for j in RN + 1:
+		var y := lerpf(y0, y_top, float(j) / float(RN))
+		var r := _bottle_radius(y) * rscale
+		for a in SEG + 1:
+			var ang := TAU * float(a) / float(SEG)
+			st.set_uv(Vector2(float(a) / float(SEG), float(j) / float(RN)))
+			st.add_vertex(Vector3(r * cos(ang), y, r * sin(ang)))
+	for j in RN:
+		for a in SEG:
+			var i0 := j * (SEG + 1) + a
+			var i1 := i0 + 1
+			var i2 := i0 + (SEG + 1)
+			var i3 := i2 + 1
+			st.add_index(i0); st.add_index(i2); st.add_index(i1)
+			st.add_index(i1); st.add_index(i2); st.add_index(i3)
+	if cap_top:
+		var rt := _bottle_radius(y_top) * rscale
+		var base := (RN + 1) * (SEG + 1)
+		st.set_uv(Vector2(0.5, 1.0)); st.add_vertex(Vector3(0.0, y_top, 0.0))   # 中心
+		for a in SEG + 1:
+			var ang := TAU * float(a) / float(SEG)
+			st.set_uv(Vector2(float(a) / float(SEG), 1.0))
+			st.add_vertex(Vector3(rt * cos(ang), y_top, rt * sin(ang)))
+		for a in SEG:
+			st.add_index(base); st.add_index(base + 1 + a); st.add_index(base + 2 + a)
+	st.generate_normals()
+	return st.commit()
+
+# 静止水体：半透明蓝玻璃质感（无涟漪）。
+func _make_water_still_shader() -> Shader:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode cull_disabled, blend_mix, depth_draw_never, specular_schlick_ggx;
+uniform vec3 wtint : source_color = vec3(0.2, 0.45, 0.9);
+void fragment() {
+	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 2.0);
+	ALBEDO = wtint;
+	ROUGHNESS = 0.06;
+	SPECULAR = 0.8;
+	EMISSION = wtint * 0.1;
+	ALPHA = mix(0.14, 0.34, fres);
 }
 """
 	return sh
