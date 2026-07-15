@@ -1662,8 +1662,9 @@ func _process(delta: float) -> void:
 			_check_coverage()
 	else:
 		_wash_hitting = false
-	# 只在"擦拭中 + 命中模型 + 本帧手指移动"时喷水珠：停下/松手就不再生成，避免叠加变亮。
-	var want_emit := _washing and _wash_hitting and _moved
+	# 命中模型：手指移动时喷水珠（停下不再生成，避免叠加变亮）。
+	# 离开模型到背景：仍在清洗则继续在最后命中处喷，亮球留在原地不消失。
+	var want_emit := _washing and (not _wash_hitting or _moved)
 	if _spray_fx.emitting != want_emit:
 		_spray_fx.emitting = want_emit
 	_moved = false                            # 每帧消费，无余量
