@@ -113,6 +113,7 @@ var _room_neck_r := 2.4                            # 细口半径
 var _room_top := 15.0                              # 瓶口 y
 var _room_body_r := 6.4                            # 水晶容纳球半径（贴瓶身内）
 var _room_wall := 0.4                              # 瓶壁厚度（约束时减去，防穿模）
+var _room_ripple := 0.0                            # 水面涟漪当前幅度（平滑跟随气泡数）
 const BUBBLE_MAX := 180                             # 气泡池容量
 var _bubble_mm: MultiMesh                           # 气泡 MultiMesh
 var _bub_pos: PackedVector3Array
@@ -884,8 +885,8 @@ func _open_room() -> void:
 	_room_water_top = -_room_R + 0.8 * (_room_top + _room_R)     # 水到 80%
 	_room_water_r = _room_R
 	_room_burst_r = _room_R * 1.15
-	_room_water_mat = null                          # 静止水，无涟漪材质
-	_room_waterbody_mat = null
+	_room_water_mat = null                          # 下面建水体时赋值（水面涟漪材质）
+	_room_waterbody_mat = null                      # 水体无独立涟漪材质
 	_room_mmis.clear()
 	_room_moving = false
 
@@ -898,7 +899,11 @@ func _open_room() -> void:
 	var water := MeshInstance3D.new()
 	water.mesh = _make_bottle_surface(0.96, _room_water_top, true)
 	var wmat := ShaderMaterial.new(); wmat.shader = _make_water_still_shader()
+	wmat.set_shader_parameter("water_y", _room_water_top)
+	wmat.set_shader_parameter("band", _room_R * 0.25)
+	wmat.set_shader_parameter("wscale", 1.0 / maxf(_room_R, 0.001))
 	water.material_override = wmat
+	_room_water_mat = wmat                           # 存下 → _process 逐帧驱动涟漪
 	_room_root.add_child(water)
 	# 灯光：上方俯照 + 中心补光。
 	var top := SpotLight3D.new()
@@ -1423,13 +1428,26 @@ func _make_water_still_shader() -> Shader:
 shader_type spatial;
 render_mode cull_disabled, blend_mix, depth_draw_never, specular_schlick_ggx;
 uniform vec3 wtint : source_color = vec3(0.2, 0.45, 0.9);
+uniform float rtime = 0.0;
+uniform float ripple = 0.0;        // 涟漪幅度（有气泡时增大，0=静止）
+uniform float water_y = 0.0;       // 水面 y
+uniform float band = 1.0;          // 水面往下多少内算"表面"
+uniform float wscale = 1.0;        // 波长基准（≈1/瓶半径）
+varying vec3 lpos;
+void vertex() { lpos = VERTEX; }
 void fragment() {
 	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 2.0);
+	// 仅水面附近起涟漪：同心波（片元级，稀疏顶点也能显现）。
+	float top_f = smoothstep(water_y - band, water_y, lpos.y);
+	float r = length(lpos.xz) * wscale;
+	float wave = sin(r * 6.0 - rtime * 4.0) * 0.5 + sin(r * 11.0 + rtime * 2.5) * 0.5;
+	float rip = ripple * top_f * wave;
 	ALBEDO = wtint;
 	ROUGHNESS = 0.06;
 	SPECULAR = 0.8;
-	EMISSION = wtint * 0.08;
-	ALPHA = mix(0.06, 0.2, fres);                 // 更透（中心近乎清澈，边缘略实）
+	NORMAL = normalize(NORMAL + vec3(rip * 0.6, 0.0, rip * 0.6));   // 高光随波闪动
+	EMISSION = wtint * (0.08 + 0.5 * max(rip, 0.0));               // 波峰更亮
+	ALPHA = clamp(mix(0.06, 0.2, fres) + 0.15 * max(rip, 0.0), 0.0, 0.5);
 }
 """
 	return sh
@@ -1638,6 +1656,14 @@ func _process(delta: float) -> void:
 		_room_time += delta                       # 涟漪时钟
 		if _room_water_mat != null:
 			_room_water_mat.set_shader_parameter("rtime", _room_time)
+			# 水面涟漪幅度随活跃气泡数增减（平滑过渡）。
+			var nb := 0
+			for i in BUBBLE_MAX:
+				if _bub_life[i] > 0.0:
+					nb += 1
+			var rip_target := clampf(float(nb) / 6.0, 0.0, 1.0)
+			_room_ripple = lerpf(_room_ripple, rip_target, clampf(delta * 3.0, 0.0, 1.0))
+			_room_water_mat.set_shader_parameter("ripple", _room_ripple)
 		if _room_waterbody_mat != null:
 			_room_waterbody_mat.set_shader_parameter("rtime", _room_time)
 		# 涟漪冲击 → 给水中模型冲量，之后靠水阻力停下（有涟漪或还在动才模拟）。
