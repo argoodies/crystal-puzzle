@@ -1491,12 +1491,12 @@ func _bottle_radius(y: float) -> float:
 		# 平滑 S 形收肩（smoothstep），像烧瓶自然的肩线。
 		var t := (y - body_top) / (neck_start - body_top)
 		return lerpf(r0, nr, smoothstep(0.0, 1.0, t))   # 肩部
-	# 直颈；顶端一小段做卷边（外凸圆珠状唇缘）。
-	var lip_h := R * 0.32                            # 卷边高度
+	# 直颈；颈口一小段向外张开成圆唇（rolled lip）。
+	var lip_h := R * 0.12                            # 卷唇高度（短）
 	var lip_lo := _room_top - lip_h
 	if y > lip_lo:
 		var t := (y - lip_lo) / lip_h               # 0→1
-		return nr + sin(t * PI) * nr * 0.42         # 外凸圆珠 → 回收，形成卷唇
+		return nr * (1.0 + 0.35 * smoothstep(0.0, 1.0, t))   # 平滑向外张的圆唇
 	return nr                                        # 细口
 
 # 旋转母线生成瓶面 ArrayMesh（rscale 缩放半径；y 从 -R 到 y_top；cap_top 加水面盖）。
