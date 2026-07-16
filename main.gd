@@ -1968,7 +1968,7 @@ void fragment() {
 	ROUGHNESS = 0.06;
 	SPECULAR = 0.8;
 	EMISSION = wtint * 0.08 + vec3(0.7, 0.85, 1.0) * spark * 1.2;   // 闪点偏白亮
-	ALPHA = clamp(mix(0.06, 0.2, fres) + 0.25 * spark, 0.0, 0.6);
+	ALPHA = clamp(mix(0.03, 0.12, fres) + 0.2 * spark, 0.0, 0.4);   // 更透
 }
 """
 	return sh
@@ -1988,7 +1988,7 @@ void fragment() {
 	ROUGHNESS = 0.0;                              // 抛光镜面
 	SPECULAR = 1.0;
 	EMISSION = tint * (0.04 + 0.7 * fres);        // 边缘更亮的高光轮廓
-	ALPHA = clamp(mix(0.03, 0.62, fres), 0.0, 0.7);   // 中心更清透、边缘更实（厚壁感）
+	ALPHA = clamp(mix(0.015, 0.4, fres), 0.0, 0.5);   // 更透（中心近乎清澈，仅边缘略实）
 }
 """
 	return sh
