@@ -1968,7 +1968,7 @@ void fragment() {
 	ROUGHNESS = 0.06;
 	SPECULAR = 0.8;
 	EMISSION = wtint * 0.08 + vec3(0.7, 0.85, 1.0) * spark * 1.2;   // 闪点偏白亮
-	ALPHA = clamp(mix(0.03, 0.12, fres) + 0.2 * spark, 0.0, 0.4);   // 更透
+	ALPHA = clamp(mix(0.07, 0.2, fres) + 0.2 * spark, 0.0, 0.45);   // 略提升显现度
 }
 """
 	return sh
