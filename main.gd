@@ -2233,14 +2233,7 @@ func _process(delta: float) -> void:
 	if _spray_fx.emitting != want_emit:
 		_spray_fx.emitting = want_emit
 	_moved = false                            # 每帧消费，无余量
-	# 覆尘态与交付态：擦拭中清零；否则累计闲置，满 3s 让右上按钮重新淡入。
-	if _btn_state == ST_REFRESH or _btn_state == ST_DELIVERED:
-		if _washing:
-			_idle_time = 0.0
-		elif not _intro_btns:
-			_idle_time += delta
-			if _idle_time >= 3.0:
-				_show_intro_btns()
+	# 右上按钮不再静止自动浮现（改为单击右上角召出，见 _maybe_tap_show_btns）。
 	var target := _manual_rot
 	var weight := 1.0 - pow(0.002, delta)
 	_world.rotation = _world.rotation.lerp(target, weight)
