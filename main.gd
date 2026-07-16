@@ -1988,7 +1988,7 @@ void fragment() {
 	ROUGHNESS = 0.0;                              // 抛光镜面
 	SPECULAR = 1.0;
 	EMISSION = tint * (0.04 + 0.7 * fres);        // 边缘更亮的高光轮廓
-	ALPHA = clamp(mix(0.015, 0.4, fres), 0.0, 0.5);   // 更透（中心近乎清澈，仅边缘略实）
+	ALPHA = clamp(mix(0.015, 0.25, fres), 0.0, 0.32);   // 更透（中心与边缘都清透）
 }
 """
 	return sh
