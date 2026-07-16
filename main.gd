@@ -1302,17 +1302,7 @@ func _open_room(do_intro := true) -> void:
 	water.material_override = wmat
 	_room_water_mat = wmat                           # 存下 → _process 逐帧驱动涟漪
 	_room_root.add_child(water)
-	# 灯光：上方俯照 + 中心补光。
-	var top := SpotLight3D.new()
-	top.position = Vector3(0, _room_top + 8.0, 0)
-	top.rotation = Vector3(-PI * 0.5, 0, 0)
-	top.light_energy = 12.0; top.spot_range = _room_R * 8.0; top.spot_angle = 50.0
-	top.light_color = Color(0.85, 0.92, 1.0); top.shadow_enabled = false
-	_room_root.add_child(top)
-	var fill := OmniLight3D.new()
-	fill.position = Vector3.ZERO; fill.light_energy = 3.0; fill.omni_range = _room_R * 6.0
-	fill.light_color = Color(0.5, 0.65, 1.0); fill.shadow_enabled = false
-	_room_root.add_child(fill)
+	# 灯光：空间不再放专属顶光/中心补光，靠主光(_dir/_spot)+环境光+自发光。
 	# 每种"完成过"的模型 → 一个 MultiMeshInstance3D，悬浮在圆瓶身水中。
 	var g := 0
 	for path in MODELS:
