@@ -555,11 +555,10 @@ func _build_room_progress_ui() -> void:
 	_room_prog_label.offset_left = 0; _room_prog_label.offset_right = 0
 	_room_prog_label.offset_top = -122.0; _room_prog_label.offset_bottom = -88.0
 	layer.add_child(_room_prog_label)
-	# 完成后：圆圈位置出现的两行闪光文字（app 名+版本 / 副标题），常驻至离开。
-	# 主字体=打包的 CJK 子集，fallback=系统拉丁字体（渲染 ASCII/版本号）。
+	# 完成后：圆圈位置出现的一行闪光文字（中日英名+版本），常驻至离开。
+	# 主字体=打包 CJK 子集(擦水晶磨き)，fallback=打包拉丁子集(ASCII+圆点)。全内嵌,不依赖 SystemFont。
 	var cjk: FontFile = load("res://fonts/appname.ttf")
-	var latin := SystemFont.new()
-	latin.font_names = PackedStringArray(["sans-serif"])
+	var latin: FontFile = load("res://fonts/appname_latin.ttf")
 	cjk.fallbacks = [latin]
 	_room_done_box = VBoxContainer.new()
 	_room_done_box.alignment = BoxContainer.ALIGNMENT_CENTER
