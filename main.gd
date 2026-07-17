@@ -1539,7 +1539,7 @@ func _room_sim(delta: float) -> void:
 	var DRAG := exp(-0.4 * delta)                     # 水阻力更小 → 漂得更久
 	var GRAV := 2.2                                   # 重力：最终沉底
 	var moving := false
-	var bub_budget := 6                               # 每帧最多新气泡
+	var bub_budget := 10                              # 每帧最多新气泡（更多水晶在冒）
 	for entry in _room_mmis:
 		var node: MultiMeshInstance3D = entry.get("node")
 		if not is_instance_valid(node):
@@ -1588,8 +1588,8 @@ func _room_sim(delta: float) -> void:
 				a *= ADRAG
 				avel[i] = a
 			mm.set_instance_transform(i, Transform3D(b, p))
-			# 自旋足够快 → 周围随机冒气泡。
-			if asp > 5.0 and bub_budget > 0 and randf() < asp * 0.012:
+			# 只要在自旋就冒气泡，频率随自旋速度等比。
+			if asp > 0.3 and bub_budget > 0 and randf() < asp * 0.012:
 				var off := Vector3(randf_range(-1, 1), randf_range(-0.4, 0.6), randf_range(-1, 1)).normalized() * (TARGET_W * TABLE_DISP * 0.5)
 				_spawn_bubble(p + off, randf_range(0.12, 0.28))
 				bub_budget -= 1
