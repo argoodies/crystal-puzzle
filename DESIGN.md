@@ -1,6 +1,6 @@
 # 擦水晶 · 水晶磨き · Crystal Puzzle — 理念文档
 
-> 一款轻松解压的 3D 擦拭小游戏。Godot 4.6 / gl_compatibility，一套代码同发 **iOS / Web(GitHub Pages) / Android**。
+> 一款轻松解压的 3D 擦拭小游戏。Godot 4.6 / gl_compatibility，一套代码同发 **iOS / Web(GitHub Pages)**。
 > 场景全部脚本生成(`main.gd`)，无 `.tscn`。三语发行——名字随设备语言:繁/简中「擦水晶」、日「水晶磨き」、英「Crystal Puzzle」(App Store 商店名「Crystal Puzzle: Wipe & Polish」，因商店名须全球唯一)。
 
 ---
@@ -98,10 +98,9 @@
 - **Web**:`.github/workflows/web-pages.yml`(ubuntu)无线程导出 → **跨仓库**推到公开的 `argoodies/crystal-puzzle-web` 的 gh-pages(PAGES_PAT)托管，`argoodies.github.io/crystal-puzzle-web/`。
 - **iOS**:`.github/workflows/ios-testflight.yml`(macos-15/Xcode 26)——Godot 导出 Xcode 工程 → `xcodebuild` 自动签名归档 → `altool` 上传。build 号 `1000 + run_number`，PlistBuddy 注入 `CFBundleVersion`/`UIDeviceFamily`/`CFBundleLocalizations`;并注入 en/ja/zh-Hant/zh-Hans 的 `InfoPlist.strings` + xcodeproj gem 注册,实现**随设备语言动态显示应用名**(英 Crystal Puzzle、繁/简中 擦水晶、日/其它 水晶磨き)。
   - **反复踩坑**:自动签名会新建开发证书，攒满即"证书数量超限"归档失败。→ 用 `/root/asc_api.py` 吊销"Created via API"的 DEVELOPMENT 证书后重跑。
-- **Android**:`.github/workflows/android-apk.yml`(ubuntu)——JDK17 + Godot + 导出模板 + Android SDK build-tools,生成 debug keystore,用预建模板导出 **debug 签名 APK**(arm64+armv7,无 gradle/NDK)作构建产物;再发成公开 **GitHub Release**(`android-v*`)当稳定直链。包名同 `io.github.argoodies.crystal`。
 - **ASC 自动化**:`/root/asc_api.py`(ES256 JWT)直调 REST API——改应用信息/本地化、送外部 Beta 审核、建测试组、轮询 build、清理证书等。**专属 App 6791685320,bundle `io.github.argoodies.crystal`**(从早期复用的 `io.argoodies.deskfeel` 迁移而来),primaryLocale **ja**。
 - **本地化**:App 名/副标题/描述、TestFlight 测试信息、营销站全部**三语**(en / ja / zh-Hant);设备/游戏内/网站英文名 Crystal Puzzle,App Store 商店名 Crystal Puzzle: Wipe & Polish。
-- **营销/隐私/支援页**:独立仓库 `crystal-puzzle-page`(繁中/日/英三语,`data-lang` 切换),含 **iOS(App Store 即将上线)/ Android(APK 下载)两个下载页**、隐私、支援;左上 logo 点回首页。
+- **营销/隐私/支援页**:独立仓库 `crystal-puzzle-page`(繁中/日/英三语,`data-lang` 切换),含 **iOS 下载页(App Store 即将上线)**、隐私、支援;左上 logo 点回首页。
 - **提交作者**:`vultr <root@vultr.guest>`;每次提交带 Co-Authored-By。
 
 ---
@@ -109,4 +108,4 @@
 ## 七、演进史(为什么它长这样)
 
 一路重构过来:桌板令牌游戏(小魔典)→ 3D 拼图 → 宝石切割(体素粉碎)→ 覆粉钻石冲刷 → 定型为"擦水晶"。核心教训:**当机制和直觉/性能反复打架时，换一个更贴合直觉又更省的表达**(体素粉碎 → UV 遮罩揭示)，往往比死磕更好。
-名字也一路变:小魔典 → 解谜小宝石 → 擦水晶;日文试过「クリスタル磨き」「宝石磨き」定为**「水晶磨き」**(擦・水・晶 三字日中同形);后转三语发行,英文名从 Crystal Polish 改为 **Crystal Puzzle**(商店名因须唯一用 Crystal Puzzle: Wipe & Polish),并加出 Android 包。
+名字也一路变:小魔典 → 解谜小宝石 → 擦水晶;日文试过「クリスタル磨き」「宝石磨き」定为**「水晶磨き」**(擦・水・晶 三字日中同形);后转三语发行,英文名从 Crystal Polish 改为 **Crystal Puzzle**(商店名因须唯一用 Crystal Puzzle: Wipe & Polish)。曾短暂出过 Android APK,后因华为等 EMUI 机型的图标/闪屏适配成本过高而放弃,回归 iOS + Web。

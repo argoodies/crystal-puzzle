@@ -1,7 +1,7 @@
 # 擦水晶 · 水晶磨き · Crystal Puzzle（Godot 版）
 
 一款轻松解压的 3D 擦拭小游戏:一枚蒙尘的**水晶拼图**，喷水擦去灰尘，露出下面通透光滑、折射炫光的水晶。
-同一套 GDScript 代码同时出 **iOS / Web（GitHub Pages）/ Android**。三语发行:繁/简中「擦水晶」、日「水晶磨き」、英「Crystal Puzzle」。
+同一套 GDScript 代码同时出 **iOS / Web（GitHub Pages）**。三语发行:繁/简中「擦水晶」、日「水晶磨き」、英「Crystal Puzzle」。
 
 - 引擎：Godot 4.6.3，语言 GDScript
 - 渲染：`gl_compatibility`（OpenGL / WebGL2），Web 与移动端都稳
@@ -30,7 +30,6 @@
 | --- | --- | --- |
 | Web → GitHub Pages | `.github/workflows/web-pages.yml` | 无线程导出（适配 Pages 无 COOP/COEP 头），跨仓库推到公开的 `argoodies/crystal-puzzle-web` 托管 |
 | iOS → TestFlight | `.github/workflows/ios-testflight.yml` | macOS runner + Godot iOS 导出模板 + 自动签名归档 + `altool` 上传，`build = 1000 + run_number`，App `io.github.argoodies.crystal` |
-| Android → APK | `.github/workflows/android-apk.yml` | ubuntu + JDK17 + Android SDK build-tools，预建模板导出 debug 签名 APK（arm64+armv7）作产物，再发成公开 GitHub Release 直链 |
 
 ## 本地
 
