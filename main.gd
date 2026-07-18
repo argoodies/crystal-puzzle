@@ -27,7 +27,7 @@ var _uvs: PackedVector2Array              # 对应 UV，用于把冲刷画进遮
 var _mask_img: Image                      # 冲刷遮罩：0=覆尘, 1=已冲刷露出
 var _mask_tex: ImageTexture
 var _circle_btn: Button                     # 底部中央：达标圆圈→交付对勾
-var _pct_label: Label                       # 底部中央：无尘度≥90% 时常显的“9x.x%”
+var _pct_label: Label                       # 底部中央：无尘度≥99% 时常显的“99.x%”
 var _pct_val := -1                          # 当前显示的无尘度×10（0.1% 精度；-1=未显示）
 var _circle_pulse_tw: Tween                 # 达标圆圈的 2s 呼吸循环
 var _play_btn: Button                       # 底部中央：▶️ 随机下一关
@@ -99,6 +99,7 @@ var _room_done_label: Label                         # app 名+版本号（纯白
 var _room_done_tw: Tween
 var _room_circle_shown := false                     # 圆圈已出现（"叮"只响一次）
 var _room_circle_lock := false                      # 完成动画期间锁定
+var _room_circle_pulse_tw: Tween                    # 完成圆圈 2s 呼吸循环
 var _video_layer: CanvasLayer
 var _video_player: VideoStreamPlayer
 var _in_room := false
@@ -341,7 +342,7 @@ func _build_toggle() -> void:
 	_circle_btn.visible = false
 	layer.add_child(_circle_btn)
 
-	# 底部中央：无尘度≥90% 起常显“9x%”，达标(100%)换成呼吸圆圈。
+	# 底部中央：无尘度≥99% 起常显“99.x%”，达标(100%)换成呼吸圆圈。
 	_pct_label = Label.new()
 	_pct_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_pct_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -647,6 +648,7 @@ func _show_room_progress(on: bool) -> void:
 		_room_prog.visible = false
 		_room_prog_label.visible = false
 	if not on and _room_circle_btn != null:
+		_stop_room_circle_pulse()
 		_room_circle_btn.visible = false
 
 func _update_room_progress() -> void:
@@ -664,12 +666,12 @@ func _update_room_progress() -> void:
 			_room_circle_shown = true
 			_room_circle_btn.icon = load("res://textures/icon_circle.png")
 			_room_circle_btn.disabled = false
-			_room_circle_btn.modulate.a = 0.0
 			_room_circle_btn.visible = true
-			create_tween().tween_property(_room_circle_btn, "modulate:a", 1.0, 0.3)
+			_start_room_circle_pulse()         # 2s 呼吸循环渐显渐隐
 			_sfx_ding.play()                   # 可完成提示音
 	else:
 		_room_circle_shown = false
+		_stop_room_circle_pulse()
 		_room_circle_btn.visible = false
 
 # 点击完成圆圈 → 谜团音 + 变全视之眼 → 直接进结算（光芒+减15），不再播视频。
@@ -677,6 +679,7 @@ func _on_room_circle() -> void:
 	if _room_circle_lock:
 		return
 	_room_circle_lock = true
+	_stop_room_circle_pulse()                  # 停呼吸，全视之眼保持满亮
 	_sfx_enter.play()                          # 谜团音（非轻快完成音乐）
 	_room_circle_btn.icon = load("res://textures/icon_eye.png")   # 变全视之眼
 	_room_circle_btn.modulate.a = 1.0
@@ -736,6 +739,7 @@ func _finish_challenge() -> void:
 	_recount()
 	_room_circle_lock = false
 	_room_circle_shown = false
+	_stop_room_circle_pulse()
 	if _room_circle_btn != null:
 		_room_circle_btn.visible = false
 	_save_state()
@@ -1009,7 +1013,7 @@ func _hide_bottom_ui() -> void:
 	if _play_btn != null:
 		_play_btn.visible = false
 
-# 无尘度≥90%：底部中央常显“9x.x%”，随 0.1% 精度变化更新（tenths=无尘度×10）。
+# 无尘度≥99%：底部中央常显“99.x%”，随 0.1% 精度变化更新（tenths=无尘度×10）。
 func _show_pct_label(tenths: int) -> void:
 	if _pct_label == null:
 		return
@@ -1026,18 +1030,31 @@ func _hide_pct_label() -> void:
 	if _pct_label != null:
 		_pct_label.visible = false
 
-# 达标圆圈：1s 周期渐显渐隐呼吸循环，透明度真正 0→100%→0。
+# 通用完成圆圈呼吸：2s 周期（1s 渐显 + 1s 渐隐），透明度真正 0→100%→0，无限循环。
+func _make_pulse(btn: Button) -> Tween:
+	btn.modulate.a = 0.0
+	var tw := create_tween().set_loops()
+	tw.tween_property(btn, "modulate:a", 1.0, 1.0).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(btn, "modulate:a", 0.0, 1.0).set_trans(Tween.TRANS_SINE)
+	return tw
+
 func _start_circle_pulse() -> void:
 	_stop_circle_pulse()
-	_circle_btn.modulate.a = 0.0
-	_circle_pulse_tw = create_tween().set_loops()
-	_circle_pulse_tw.tween_property(_circle_btn, "modulate:a", 1.0, 0.5).set_trans(Tween.TRANS_SINE)
-	_circle_pulse_tw.tween_property(_circle_btn, "modulate:a", 0.0, 0.5).set_trans(Tween.TRANS_SINE)
+	_circle_pulse_tw = _make_pulse(_circle_btn)
 
 func _stop_circle_pulse() -> void:
 	if _circle_pulse_tw != null and _circle_pulse_tw.is_valid():
 		_circle_pulse_tw.kill()
 	_circle_pulse_tw = null
+
+func _start_room_circle_pulse() -> void:
+	_stop_room_circle_pulse()
+	_room_circle_pulse_tw = _make_pulse(_room_circle_btn)
+
+func _stop_room_circle_pulse() -> void:
+	if _room_circle_pulse_tw != null and _room_circle_pulse_tw.is_valid():
+		_room_circle_pulse_tw.kill()
+	_room_circle_pulse_tw = null
 
 # 显示达标圆圈（呼吸循环），隐藏双按钮与百分比。
 func _show_circle() -> void:
@@ -1160,8 +1177,8 @@ func _check_coverage() -> void:
 		_enter_circle()                        # 100% → 呼吸圆圈（内部会隐藏百分比）
 		return
 	var tenths := int(floor(cov * 1000.0))     # 无尘度×10：精确到 0.1%（截断，避免未满即显 100.0）
-	if tenths >= 900:
-		_show_pct_label(tenths)                # 90.0%~99.9% → 常显“9x.x%”
+	if tenths >= 990:
+		_show_pct_label(tenths)                # 99.0%~99.9% → 常显“99.x%”
 	else:
 		_hide_pct_label()
 
